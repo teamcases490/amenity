@@ -548,11 +548,11 @@ $> 1.5$    & 90--100 & Premium --- medical city \\ \bottomrule
 
 \begin{align}
 G &= \sum_{i=1}^{n} \frac{w_i}{\max(d_i, 0.1)^2} \\[6pt]
-\text{Score} &= \min\left(100, \frac{G}{200} \times 100\right)
+\text{Score} &= \min\left(100, G \right)
 \end{align}
 
 $w_i$ = importance weight; $d_i$ = distance in km (floor at 100m).
-The raw gravity sum $G$ is normalised against a benchmark of 200 (e.g., 5 amenities at 200m). This linear scaling provides a clearer gradient than the previous log-based approach.
+The raw gravity sum $G$ is normalised against a benchmark of 100 (e.g., dense urban baseline). This linear scaling provides a clearer gradient than the previous log-based approach.
 
 $w_i$ = importance weight (premium POI = 3.0, standard = 1.0); $G_{\min}=0.1$ (rural baseline); $G_{\max}=100$ (city centre baseline).
 
@@ -784,7 +784,7 @@ Rural & Few amenities; travel needed for most services \\ \bottomrule
 \end{center}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Validation Results (v2.1)}
+\section{Validation Results (v1.0)}
 % ─────────────────────────────────────────────────────────────────────────────
 
 \begin{table}[H]
@@ -891,7 +891,7 @@ Civic       & 37.6 & 39.5 & 0.0 & 60.4 & 0.07 & -1.18 \\ \bottomrule
 \subsection{Technical Limitations}
 
 \begin{enumerate}
-  \item \textbf{API dependency.} The system needs the OSM Overpass API. While v2.1 includes robust retries, extreme network issues or API downtime can still block fresh data fetching.
+  \item \textbf{API dependency.} The system needs the OSM Overpass API. While v1.0 includes robust retries, extreme network issues or API downtime can still block fresh data fetching.
 
   \item \textbf{Cache staleness.} The 30-day cache improves speed but may miss recent POI changes until the cache refreshes.
 
