@@ -1,0 +1,40 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Cache & logs ─────────────────────────────────────────────────────────────
+poi_cache/
+cache/
+logs/
+*.log
+
+# ── Data & Output files (not tracked — too large) ────────────────────────────
+*.csv
+*.jsonl
+*.json
+results/
+data/
+!example_input.csv
+
+# ── IDE & Temp ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.pytest_cache/
+.ipynb_checkpoints/
+tmp/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
