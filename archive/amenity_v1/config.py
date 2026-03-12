@@ -17,7 +17,7 @@ API_MAX_RETRIES = 5
 REQUESTS_PER_SECOND = 0.2
 
 # Google Maps API Configuration
-GOOGLE_MAPS_API_KEY = "AIzaSyB0WbHLQdYMg4zsxcgy6ZD_l8Kwgca3kmQ"
+GOOGLE_MAPS_API_KEY = "Your-api-key-here"
 DATA_SOURCE_MODE = 'osm'  # 'osm', 'google', or 'hybrid'
 
 # Google Maps feature flags
