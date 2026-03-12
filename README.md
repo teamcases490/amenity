@@ -1,13 +1,6 @@
-# Amenity Scoring System (v2.2)
+# Amenity Scoring System 
 
 A production-ready, mathematically rigorous system for calculating amenity index scores for any location in India based on Points of Interest (POI) data natively sourced from OpenStreetMap.
-
-## What's New in v2.2?
-- **Flawless Mathematical Pipeline**: 109 out of 109 edge-case tests pass, ensuring 100% stable division, bounded indices [0,100], and crash-free handling of zero POIs.
-- **Robust Proximity Averaging**: Distance metrics now stabilize strictly on the **5 nearest POIs**, preventing sprawling catchment edges from skewing expected travel times.
-- **Accurate Density Saturation**: Multi-radius calculations precisely handle suburban and rural drops without breaking scaling constraints.
-- **Penalty Caps**: Extreme penalties (Gini imbalance, lacking diversity) are mathematically capped at 50% to organically differentiate between 'Rural' and 'Uninhabited'.
-
 ---
 
 ## Quick Start
@@ -108,5 +101,3 @@ amenity_v2/
 
 ---
 
-## License
-MIT License
