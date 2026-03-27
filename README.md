@@ -1,7 +1,6 @@
-# Amenity Scoring System 
+# Amenity Scoring System
 
-A production-ready, mathematically rigorous system for calculating amenity index scores for any location in India based on Points of Interest (POI) data natively sourced from OpenStreetMap.
----
+A system for calculating amenity index scores for any location in India based on Points of Interest (POI) data sourced from OpenStreetMap.
 
 ## Quick Start
 
@@ -9,14 +8,14 @@ A production-ready, mathematically rigorous system for calculating amenity index
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/amenity_scorer.git
+git clone https://github.com/teamcases490/amenity.git
 cd amenity_scorer
 
 # Install dependencies (requires Python 3.9+)
 pip install -r amenity_scorer/requirements.txt
 ```
 
-### Single Location Debug
+### Single Location Review
 
 ```bash
 cd amenity_scorer
@@ -30,57 +29,22 @@ cd amenity_scorer
 python main.py --input ../data/location.csv --output ../results/amenity_scores --workers 4
 ```
 
----
-
 ## How It Works
 
-### Step 1: Fetch POIs
-The system queries OpenStreetMap's Overpass API to fetch all amenities within **2km**. It uses local JSON caching with a 30-day TTL to prevent API ratelimiting.
+1. **Fetch POIs**: The system queries OpenStreetMap's Overpass API to fetch amenities within 2km. It caches responses locally to reduce API loads.
+2. **Extract Spatial Features**: Extracts statistical features such as distance to nearest service, average proximity of nearest amenities, and density distributions at specific radii.
+3. **Algorithm Component Weighting**: Scores each category based on density, proximity, quality, accessibility, spatial clustering, and economic indicators.
+4. **Final Aggregation**: Weights the category scores into a final composite index.
+5. **Score Adjustments**: Applies penalties for sparse mapping coverage, mono-use areas, or absence of primary essentials like healthcare and transport.
+6. **Classification**:
+   - **Metro (60-100)**: Dense infrastructure.
+   - **Urban (30-59.9)**: Standard or developing area.
+   - **Rural (<30)**: Low mapped density or lacking core amenities.
 
-**Categories Analyzed** (11 total):
-Essential, Healthcare, Education, Transport, Finance, Shopping, Food, Cultural, Premium, Employment, Civic.
+## Proxy Limitations
 
-### Step 2: Extract Spatial Features
-For each location, the system extracts critical mathematical features:
-- **Weighted Composite Density**: Measured across 500m (50% weight), 1km (30%), and 2km (20%) radiuses. 
-- **Nearest Distance**: Actual Euclidean haversine decay to nearest service.
-- **Average Proximity**: Averaged strictly across top-5 closest services.
-- **Gini Coefficient**: To detect spatial inequality (e.g., all shops in a single mall vs spread across neighborhoods).
-- **Simpson's Diversity**: Identifying mono-use (industrial) vs mixed-use combinations.
-
-### Step 3: Algorithm Component Weighting
-Each category scores [0-100] based on 6 core pillars:
-- **Density (25%)**
-- **Proximity (20%)**
-- **Quality (20%)** 
-- **Accessibility (15%)** — Inverse-square gravity decay.
-- **Spatial (10%)** — Nearest Neighbor distribution metrics.
-- **Economic (10%)** — Local vibrancy estimates.
-
-### Step 4: The Final Aggregation
-Categories are multiplied by Configured Weights (e.g., Essential=24%, Healthcare=17%, Premium=3%). 
-
-### Step 5: The Penalty System
-Additive penalties (max capped at 50%) are applied to prevent "POI Spamming" from artificially inflating scores.
-1. **Data Quality**: Sparse mappings (<20 POIs) incur structured penalties.
-2. **Gini (Sprawl)**: Highly clustered, car-dependent zones are penalized.
-3. **Diversity Guard**: Lack of mixed-use infrastructure drops the score.
-4. **Missing Essentials**: Absence of 'Healthcare' or 'Transport' hurts livability deeply.
-
-### Step 6: Final Classification
-- **Metro (60-100)**: Exceptionally dense, walkable, mature infrastructure.
-- **Urban (30-59.9)**: Standard suburban or developing area.
-- **Rural (<30)**: High sprawl, unmapped, or severely lacking essential infrastructure.
-
----
-
-## Known Proxy Limitations (Important for Production)
-While mathematically robust, this is an algorithmic **proxy model**. 
-1. **OSM Mapping Bias**: The system evaluates *mapped* amenities. Affluent technical hubs often have 100% of POIs mapped, while hyper-dense low-income areas might have 10% mapped. "Rural" classifications in city centers heavily indicate missing data, not necessarily unlivable environments.
-2. **Artificial Structural Tuning**: Component weight distributions (e.g., Proximity vs Density) rely on subjective human tuning aligned with urban planning theory, not machine learning correlations.
-3. **Google API Caps**: If migrating from OSM to Google Places API, Google's hard 60-result limit on density queries fundamentally breaks this algorithm's math. Keep OSM or switch to Overture Maps for true spatial density processing.
-
----
+- **OSM Mapping Bias**: The system evaluates mapped amenities. Areas with sparse OpenStreetMap coverage will score artificially low, even if amenities exist physically.
+- **Component Weights**: Category weights align with urban planning proxy targets for India.
 
 ## Project Structure
 
@@ -89,15 +53,13 @@ amenity_v2/
 ├── amenity_scorer/
 │   ├── main.py                     # Primary CLI
 │   ├── config.py                   # Master definitions & Weights
-│   ├── feature_extractor.py        # 100+ feature spatial models
-│   ├── category_scorer.py          # The 6 core Pillars
-│   ├── amenity_calculator.py       # The Penalty System
+│   ├── feature_extractor.py        # Feature spatial models
+│   ├── category_scorer.py          # Category scoring components
+│   ├── amenity_calculator.py       # Final score and penalty adjustments
 │   └── poi_fetcher.py              # OSM API and caching
-├── data/                           # Ignored source CSVs
-├── results/                        # Ignored output JSON/CSVs
+├── data/                           # Source CSV data
+├── results/                        # Output JSON/CSVs
 ├── standalone_amenity_pipeline.ipynb # Single-file executable Jupyter notebook
-└── comprehensive_test.py           # 109-test CI logic validation
+└── comprehensive_test.py           # CI logic validation
 ```
-
----
 
