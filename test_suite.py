@@ -121,6 +121,23 @@ bad_pois = [{"poi_type": "hospital", "lat": 19.07, "lon": 72.87}]
 feats_bad = extractor.extract_all(19.076, 72.877, bad_pois)
 check("POI missing distance_km filtered", feats_bad["total_pois"] == 0)
 
+# ── 5.5 End-to-End Mathematical Conversion ────────────────────────────────────
+print("\n[5.5] End-to-End Mathematical Conversion (Raw Features -> Scores)")
+# Verify that raw features directly convert to final scores properly
+test_features = extractor.extract_all(19.076, 72.877, MOCK_POIS)
+cat_scores = {}
+for category in CATEGORY_WEIGHTS:
+    cat_scores[category] = scorer.score(category, test_features, MOCK_POIS)
+
+check("Category scoring utilized raw features", cat_scores["healthcare"]["score"] > 0)
+check("Category component (density) computed", cat_scores["healthcare"]["components"]["density"] > 0)
+check("Category component (proximity) computed", cat_scores["healthcare"]["components"]["proximity"] > 0)
+
+final_calc = calc.calculate(cat_scores, total_pois=len(MOCK_POIS), features=test_features)
+check("Raw features -> Final score successful", final_calc["amenity_index"] > 0)
+check("Scores mapped to classification", final_calc["classification"] in ["Metro", "Urban", "Rural"])
+
+
 # ── 6. Coordinate Validation ─────────────────────────────────────────────────
 print("\n[6] Coordinate Validation")
 try:
