@@ -1,887 +1,1437 @@
 """
-COMPREHENSIVE OSM CONFIGURATION FOR INDIA
-==========================================
+Comprehensive OSM configuration for India.
 
 Complete POI tag configuration based on exhaustive OSM India analysis.
-Includes ALL amenity, office, railway, building, shop, and leisure tags.
-
-Version: 2.1 (OSM-only, no Google API)
-Date: 2026-02-18
-Source: OSM Tag Analysis (Bangalore + India-wide verification)
+Includes amenity, office, railway, building, shop, and leisure tags.
 """
 
-import os
+import pathlib as _pl
 
 VERSION = "2.1"
 
-# API Configuration (OSM / Overpass only)
+# API Configuration
 OSM_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 API_TIMEOUT = 90
-API_MAX_RETRIES = 5
-REQUESTS_PER_SECOND = 0.2
+API_MAX_RETRIES = 9
+REQUESTS_PER_SECOND = 0.5
 
-# Data source — OSM only (Google API removed)
-DATA_SOURCE_MODE = 'osm'
+DATA_SOURCE_MODE = "osm"
 
-# Cache and log directories — stored at project root (not inside amenity_scorer/)
-# Using __file__ makes paths correct regardless of the working directory.
-import pathlib as _pl
+# Paths — relative to project root
 _ROOT = _pl.Path(__file__).resolve().parent.parent
 CACHE_DIR = str(_ROOT / "cache")
-LOG_DIR   = str(_ROOT / "logs")
+LOG_DIR = str(_ROOT / "logs")
 CACHE_TTL_DAYS = 30
 
-# Analysis Radii (meters) — used by FeatureExtractor for multi-radius counts
+# Analysis radii (meters)
 RADII = [500, 1000, 2000]
 
 # ============================================================================
-# COMPREHENSIVE POI QUALITY WEIGHTS
-# ============================================================================
-# Based on exhaustive OSM India tag analysis
-# Includes: amenity=*, office=*, railway=*, building=*, shop=*, leisure=*
-# All tags verified to exist in Indian OSM data
+# POI QUALITY WEIGHTS
 # ============================================================================
 
 POI_WEIGHTS = {
-    # ========================================================================
-    # HEALTHCARE CATEGORY
-    # ========================================================================
-    'healthcare': {
-        # Amenity tags
-        'hospital': 3.0,                 # Major hospitals
-        'clinic': 2.0,                   # Clinics, dispensaries
-        'pharmacy': 1.8,                 # Pharmacies, medical stores
-        'doctors': 2.0,                  # Doctor's offices
-        'dentist': 1.5,                  # Dental clinics
-        'health_centre': 2.0,            # Health centers
-        'nursing_home': 1.8,             # Nursing homes
-        'veterinary': 1.3,               # Veterinary clinics
-        'medical': 2.0,                  # Medical facilities
-        'chemist': 1.8,                  # Chemists (India-specific)
-        'physiotherapist': 1.5,          # Physiotherapy centers
-        'optician': 1.2,                 # Optical stores
-        'laboratory': 1.5,               # Medical labs
-        'blood_bank': 2.2,               # Blood banks
-        'ayurvedic': 1.7,                # Ayurvedic centers (India)
-        'homeopathy': 1.6,               # Homeopathy clinics (India)
-        'unani': 1.6,                    # Unani medicine (India)
-        # Building tags
-        'building_hospital': 3.0,        # Hospital buildings
+    "healthcare": {
+        "hospital": 3.0,
+        "clinic": 2.0,
+        "pharmacy": 1.8,
+        "doctors": 2.0,
+        "dentist": 1.5,
+        "health_centre": 2.0,
+        "nursing_home": 1.8,
+        "veterinary": 1.3,
+        "medical": 2.0,
+        "chemist": 1.8,
+        "physiotherapist": 1.5,
+        "optician": 1.2,
+        "laboratory": 1.5,
+        "blood_bank": 2.2,
+        "ayurvedic": 1.7,
+        "homeopathy": 1.6,
+        "unani": 1.6,
+        "building_hospital": 3.0,
     },
-    
-    # ========================================================================
-    # EDUCATION CATEGORY
-    # ========================================================================
-    'education': {
-        # Amenity tags
-        'university': 3.0,               # Universities
-        'college': 2.8,                  # Colleges
-        'school': 2.5,                   # Schools
-        'kindergarten': 2.0,             # Kindergartens, preschools
-        'coaching': 1.8,                 # Coaching centers (India)
-        'training': 1.8,                 # Training institutes
-        'language_school': 1.5,          # Language schools
-        'library': 2.3,                  # Libraries
-        'music_school': 2.0,             # Music schools
-        'driving_school': 1.3,           # Driving schools
-        'research_institute': 2.5,       # Research institutes
-        'prep_school': 2.3,              # Preparatory schools
-        # Building tags
-        'building_school': 2.5,          # School buildings
-        'building_college': 2.8,         # College buildings
-        'building_university': 3.0,      # University buildings
+    "education": {
+        "university": 3.0,
+        "college": 2.8,
+        "school": 2.5,
+        "kindergarten": 2.0,
+        "coaching": 1.8,
+        "training": 1.8,
+        "language_school": 1.5,
+        "library": 2.3,
+        "music_school": 2.0,
+        "driving_school": 1.3,
+        "research_institute": 2.5,
+        "prep_school": 2.3,
+        "building_school": 2.5,
+        "building_college": 2.8,
+        "building_university": 3.0,
     },
-    
-    # ========================================================================
-    # FINANCE CATEGORY
-    # ========================================================================
-    'finance': {
-        # Amenity tags
-        'bank': 2.3,                     # Banks
-        'atm': 1.0,                      # ATMs
-        'bureau_de_change': 1.5,         # Currency exchange
-        'money_transfer': 1.5,           # Money transfer services
-        'post_office': 2.0,              # Post offices
-        'post_box': 0.8,                 # Post boxes
-        'insurance': 1.7,                # Insurance offices
-        'financial_advice': 1.8,         # Financial advisors
-        'accountant': 1.5,               # Accountants
-        'tax_advisor': 1.6,              # Tax consultants
-        # Office tags
-        'office_insurance': 1.7,         # Insurance offices
-        'office_financial': 1.9,         # Financial services
-        'office_accountant': 1.6,        # Accounting firms
-        # Building tags
-        'building_bank': 2.5,            # Bank buildings
+    "finance": {
+        "bank": 2.3,
+        "atm": 1.0,
+        "bureau_de_change": 1.5,
+        "money_transfer": 1.5,
+        "post_office": 2.0,
+        "post_box": 0.8,
+        "insurance": 1.7,
+        "financial_advice": 1.8,
+        "accountant": 1.5,
+        "tax_advisor": 1.6,
+        "office_insurance": 1.7,
+        "office_financial": 1.9,
+        "office_accountant": 1.6,
+        "building_bank": 2.5,
     },
-    
-    # ========================================================================
-    # SHOPPING CATEGORY
-    # ========================================================================
-    'shopping': {
-        # Major retail (amenity tags)
-        'mall': 3.0,                     # Shopping malls
-        'supermarket': 2.5,              # Supermarkets
-        'marketplace': 2.0,              # Markets, bazaars
-        'department_store': 2.8,         # Department stores
-        'convenience': 1.8,              # Convenience stores
-        'wholesale': 1.8,                # Wholesale markets (kept higher weight)
-        'variety_store': 1.2,            # Variety stores
-
-        # Shop tags (shop=*) — no duplicates
-        'shop': 1.5,                     # Generic shop
-        'kirana': 1.8,                   # Kirana stores (India)
-        'general': 1.5,                  # General stores
-        'butcher': 1.2,                  # Butcher shops
-        'bakery': 1.2,                   # Bakeries
-        'greengrocer': 1.0,              # Vegetable shops
-        'seafood': 1.0,                  # Seafood shops
-        'deli': 1.2,                     # Delicatessens
-        'confectionery': 1.0,            # Sweet shops
-        'beverages': 0.8,                # Beverage stores
-        'alcohol': 1.0,                  # Liquor stores
-        'tea': 0.8,                      # Tea shops
-        'coffee': 0.8,                   # Coffee shops
-        'furniture': 1.5,                # Furniture stores
-        'electronics': 1.8,              # Electronics shops
-        'books': 1.3,                    # Book stores
-        'clothes': 1.2,                  # Clothing stores
-        'shoes': 1.0,                    # Shoe stores
-        'toys': 1.0,                     # Toy stores
-        'sports': 1.2,                   # Sports goods
-        'jewelry': 1.5,                  # Jewelry stores
-        'jewellery': 1.5,                # Jewellery (alternate spelling)
-        'mobile_phone': 1.5,             # Mobile phone shops
-        'hardware': 1.3,                 # Hardware stores
-        'florist': 0.8,                  # Flower shops
-        'gift': 0.8,                     # Gift shops
-        'stationery': 1.0,               # Stationery stores
-        'cosmetics': 1.0,                # Cosmetics shops
-        'perfumery': 1.0,                # Perfume shops
-        'chemist': 1.2,                  # Chemists (retail)
-        'medical_supply': 1.3,           # Medical supplies
-        'optician': 1.2,                 # Optical stores
-        'doityourself': 1.3,             # DIY stores
-        'garden_centre': 1.0,            # Garden centers
-        'paint': 1.0,                    # Paint shops
-        'carpet': 1.0,                   # Carpet stores
-        'curtain': 0.8,                  # Curtain shops
-        'interior_decoration': 1.2,      # Interior decoration
-        'bed': 1.0,                      # Bed stores
-        'kitchen': 1.2,                  # Kitchen stores
-        'bathroom_furnishing': 1.0,      # Bathroom furnishing
-        'car': 1.8,                      # Car dealerships
-        'car_parts': 1.3,                # Auto parts
-        'car_repair': 1.3,               # Auto repair shops
-        'motorcycle': 1.5,               # Motorcycle shops
-        'bicycle': 1.0,                  # Bicycle shops
-        'tyres': 1.2,                    # Tyre shops
-        'pet': 0.8,                      # Pet stores
-        'art': 1.0,                      # Art stores
-        'craft': 0.8,                    # Craft stores
-        'fabric': 0.8,                   # Fabric shops
-        'wool': 0.7,                     # Wool shops
-        'newsagent': 0.8,                # News agents
-        'lottery': 0.5,                  # Lottery shops
-        'ticket': 0.8,                   # Ticket counters
-        'travel_agency': 1.3,            # Travel agencies
-        'laundry': 1.0,                  # Laundries
-        'dry_cleaning': 1.0,             # Dry cleaners
-        'trade': 1.0,                    # Trade shops
-        'antiques': 1.2,                 # Antique stores
-        'baby_goods': 1.0,               # Baby goods
-        'beauty': 1.0,                   # Beauty salons
-        'hairdresser': 1.0,              # Hairdressers
-        'gas': 1.0,                      # Gas shops
-        'copyshop': 1.0,                 # Copy shops
-        'houseware': 1.0,                # Houseware stores
-        'computer': 1.5,                 # Computer shops
-        'video_games': 1.2,              # Video game shops
-        'music': 1.2,                    # Music shops
-        'musical_instrument': 1.5,       # Musical instrument shops
-        'photo': 1.2,                    # Photo shops
-        'camera': 1.5,                   # Camera shops
-        'outdoor': 1.5,                  # Outdoor equipment
-        'fishing': 1.2,                  # Fishing shops
-        'hunting': 1.2,                  # Hunting shops
-        'fashion': 1.2,                  # Fashion stores
-        'watches': 1.5,                  # Watch shops
-        'chocolate': 1.0,                # Chocolate shops
-        'tobacco': 0.8,                  # Tobacco shops
-        'e-cigarette': 0.8,              # E-cigarette shops
-        'vape': 0.8,                     # Vape shops
-        'bag': 1.0,                      # Bag shops
-        'lighting': 1.2,                 # Lighting shops
-
-        # Building tags
-        'building_retail': 1.4,          # Retail buildings
-        'building_kiosk': 1.2,           # Kiosks
+    "shopping": {
+        "mall": 3.0,
+        "supermarket": 2.5,
+        "marketplace": 2.0,
+        "department_store": 2.8,
+        "convenience": 1.8,
+        "wholesale": 1.8,
+        "variety_store": 1.2,
+        "shop": 1.5,
+        "kirana": 1.8,
+        "general": 1.5,
+        "butcher": 1.2,
+        "bakery": 1.2,
+        "greengrocer": 1.0,
+        "seafood": 1.0,
+        "deli": 1.2,
+        "confectionery": 1.0,
+        "beverages": 0.8,
+        "alcohol": 1.0,
+        "tea": 0.8,
+        "coffee": 0.8,
+        "furniture": 1.5,
+        "electronics": 1.8,
+        "books": 1.3,
+        "clothes": 1.2,
+        "shoes": 1.0,
+        "toys": 1.0,
+        "sports": 1.2,
+        "jewelry": 1.5,
+        "jewellery": 1.5,
+        "mobile_phone": 1.5,
+        "hardware": 1.3,
+        "florist": 0.8,
+        "gift": 0.8,
+        "stationery": 1.0,
+        "cosmetics": 1.0,
+        "perfumery": 1.0,
+        "chemist": 1.2,
+        "medical_supply": 1.3,
+        "optician": 1.2,
+        "doityourself": 1.3,
+        "garden_centre": 1.0,
+        "paint": 1.0,
+        "carpet": 1.0,
+        "curtain": 0.8,
+        "interior_decoration": 1.2,
+        "bed": 1.0,
+        "kitchen": 1.2,
+        "bathroom_furnishing": 1.0,
+        "car": 1.8,
+        "car_parts": 1.3,
+        "car_repair": 1.3,
+        "motorcycle": 1.5,
+        "bicycle": 1.0,
+        "tyres": 1.2,
+        "pet": 0.8,
+        "art": 1.0,
+        "craft": 0.8,
+        "fabric": 0.8,
+        "wool": 0.7,
+        "newsagent": 0.8,
+        "lottery": 0.5,
+        "ticket": 0.8,
+        "travel_agency": 1.3,
+        "laundry": 1.0,
+        "dry_cleaning": 1.0,
+        "trade": 1.0,
+        "antiques": 1.2,
+        "baby_goods": 1.0,
+        "beauty": 1.0,
+        "hairdresser": 1.0,
+        "gas": 1.0,
+        "copyshop": 1.0,
+        "houseware": 1.0,
+        "computer": 1.5,
+        "video_games": 1.2,
+        "music": 1.2,
+        "musical_instrument": 1.5,
+        "photo": 1.2,
+        "camera": 1.5,
+        "outdoor": 1.5,
+        "fishing": 1.2,
+        "hunting": 1.2,
+        "fashion": 1.2,
+        "watches": 1.5,
+        "chocolate": 1.0,
+        "tobacco": 0.8,
+        "e-cigarette": 0.8,
+        "vape": 0.8,
+        "bag": 1.0,
+        "lighting": 1.2,
+        "building_retail": 1.4,
+        "building_kiosk": 1.2,
     },
-    
-    # ========================================================================
-    # FOOD & DINING CATEGORY
-    # ========================================================================
-    'food': {
-        # Amenity tags
-        'restaurant': 1.8,               # Restaurants
-        'cafe': 1.3,                     # Cafes
-        'fast_food': 0.8,                # Fast food outlets
-        'food_court': 1.8,               # Food courts
-        'bar': 1.0,                      # Bars
-        'pub': 1.0,                      # Pubs
-        'biergarten': 1.0,               # Beer gardens
-        'ice_cream': 0.7,                # Ice cream parlors
-        'tea': 0.8,                      # Tea stalls
-        'coffee_shop': 1.2,              # Coffee shops
-        'bistro': 1.5,                   # Bistros
-        'canteen': 1.0,                  # Canteens
-        'pizza': 1.0,                    # Pizza places
-        'burger': 0.8,                   # Burger joints
-        'chicken': 0.8,                  # Chicken shops
-        'sandwich': 0.7,                 # Sandwich shops
-        'kebab': 0.8,                    # Kebab shops
-        'sushi': 1.3,                    # Sushi restaurants
-        'noodle': 1.0,                   # Noodle shops
-        'pasta': 1.0,                    # Pasta restaurants
-        'seafood': 1.3,                  # Seafood restaurants
-        'steak_house': 1.5,              # Steakhouses
-        'indian': 1.2,                   # Indian restaurants
-        'chinese': 1.2,                  # Chinese restaurants
-        'italian': 1.3,                  # Italian restaurants
-        'internet_cafe': 1.2,            # Internet cafes
+    "food": {
+        "restaurant": 1.8,
+        "cafe": 1.3,
+        "fast_food": 0.8,
+        "food_court": 1.8,
+        "bar": 1.0,
+        "pub": 1.0,
+        "biergarten": 1.0,
+        "ice_cream": 0.7,
+        "tea": 0.8,
+        "coffee_shop": 1.2,
+        "bistro": 1.5,
+        "canteen": 1.0,
+        "pizza": 1.0,
+        "burger": 0.8,
+        "chicken": 0.8,
+        "sandwich": 0.7,
+        "kebab": 0.8,
+        "sushi": 1.3,
+        "noodle": 1.0,
+        "pasta": 1.0,
+        "seafood": 1.3,
+        "steak_house": 1.5,
+        "indian": 1.2,
+        "chinese": 1.2,
+        "italian": 1.3,
+        "internet_cafe": 1.2,
     },
-    
-    # ========================================================================
-    # TRANSPORT CATEGORY
-    # ========================================================================
-    'transport': {
-        # Amenity tags
-        'bus_stop': 1.0,                 # Bus stops
-        'bus_station': 2.5,              # Bus stations/terminals
-        'taxi': 0.8,                     # Taxi stands
-        'fuel': 1.8,                     # Petrol pumps
-        'parking': 1.2,                  # Parking lots
-        'parking_entrance': 1.0,         # Parking entrances
-        'parking_space': 0.5,            # Parking spaces
-        'bicycle_rental': 1.0,           # Bicycle rentals
-        'bicycle_parking': 0.7,          # Bicycle parking
-        'motorcycle_parking': 0.7,       # Motorcycle parking
-        'car_rental': 1.5,               # Car rentals
-        'car_wash': 0.8,                 # Car washes
-        'charging_station': 1.5,         # EV charging stations
-        'car_sharing': 1.3,              # Car sharing
-        'ferry_terminal': 2.0,           # Ferry terminals
-        'rest_area': 2.0,                # Highway rest areas
-        'services': 2.5,                 # Highway services
-        'elevator': 1.5,                 # Public elevators
-        
-        # Aeroway tags (Raw values)
-        'aerodrome': 5.0, 'terminal': 4.0, 'helipad': 3.0, 'heliport': 4.0, 'gate': 2.0,
-        
-        # Aerialway tags (Raw values)
-        'station': 3.0, 'cable_car': 3.0, 'gondola': 3.0, 'chair_lift': 3.0,
-        
-        # Waterway tags (Raw values)
-        'dock': 3.0, 'boatyard': 2.0, 'dam': 2.0,
-        
-        # Railway tags (railway=*) - Prefixed in poi_fetcher
-        'railway_station': 3.0,          # Railway stations
-        'railway_subway': 3.0,           # Metro/subway stations
-        'railway_subway_entrance': 2.5,  # Metro entrances
-        'railway_stop': 1.5,             # Railway stops
-        'railway_platform': 1.2,         # Railway platforms
-        'railway_halt': 1.8,             # Railway halts
-        'railway_tram_stop': 2.0,        # Tram stops
-        'railway_light_rail': 3.5,       # Light rail
-        'railway_monorail': 3.5,         # Monorail
-        
-        # Public transport tags (public_transport=*)
-        'public_transport_station': 2.5,  # PT stations
-        'public_transport_platform': 1.2, # PT platforms
-        'public_transport_stop_position': 1.0, # PT stop positions
-        'public_transport_ferry_terminal': 3.5, # Ferry terminals
-        
-        # Building tags
-        'building_train_station': 3.0,   # Train station buildings
-        'building_transportation': 2.5,  # Transportation buildings
-        'building_parking': 1.2,         # Parking buildings
+    "transport": {
+        "bus_stop": 1.0,
+        "bus_station": 2.5,
+        "taxi": 0.8,
+        "fuel": 1.8,
+        "parking": 1.2,
+        "parking_entrance": 1.0,
+        "parking_space": 0.5,
+        "bicycle_rental": 1.0,
+        "bicycle_parking": 0.7,
+        "motorcycle_parking": 0.7,
+        "car_rental": 1.5,
+        "car_wash": 0.8,
+        "charging_station": 1.5,
+        "car_sharing": 1.3,
+        "ferry_terminal": 2.0,
+        "rest_area": 2.0,
+        "services": 2.5,
+        "elevator": 1.5,
+        "aerodrome": 5.0,
+        "terminal": 4.0,
+        "helipad": 3.0,
+        "heliport": 4.0,
+        "gate": 2.0,
+        "station": 3.0,
+        "cable_car": 3.0,
+        "gondola": 3.0,
+        "chair_lift": 3.0,
+        "dock": 3.0,
+        "boatyard": 2.0,
+        "dam": 2.0,
+        "railway_station": 3.0,
+        "railway_subway": 3.0,
+        "railway_subway_entrance": 2.5,
+        "railway_stop": 1.5,
+        "railway_platform": 1.2,
+        "railway_halt": 1.8,
+        "railway_tram_stop": 2.0,
+        "railway_light_rail": 3.5,
+        "railway_monorail": 3.5,
+        "public_transport_station": 2.5,
+        "public_transport_platform": 1.2,
+        "public_transport_stop_position": 1.0,
+        "public_transport_ferry_terminal": 3.5,
+        "building_train_station": 3.0,
+        "building_transportation": 2.5,
+        "building_parking": 1.2,
     },
-    
-    # ========================================================================
-    # CULTURAL & RECREATION CATEGORY
-    # ========================================================================
-    'cultural': {
-        # Amenity tags
-        'theatre': 2.5,                  # Theatres
-        'cinema': 2.0,                   # Cinemas
-        'museum': 2.8,                   # Museums
-        'library': 2.3,                  # Libraries
-        'arts_centre': 2.0,              # Arts centers
-        'gallery': 1.8,                  # Art galleries
-        'place_of_worship': 1.5,         # Religious places
-        'park': 1.8,                     # Parks
-        'playground': 1.3,               # Playgrounds
-        'community_centre': 1.8,         # Community centers
-        'social_centre': 1.5,            # Social centers
-        'fountain': 1.0,                 # Fountains
-        'monument': 1.5,                 # Monuments
-        'viewpoint': 1.3,                # Viewpoints
-        'attraction': 2.0,               # Tourist attractions
-        'artwork': 1.0,                  # Public art
-        'clock': 0.8,                    # Public clocks
-        'memorial': 1.2,                 # Memorials
-        'wayside_shrine': 0.8,           # Wayside shrines
-        'events_venue': 2.3,             # Event venues
-        'conference_centre': 2.5,        # Conference centers
-        'exhibition_centre': 2.3,        # Exhibition centers
-        'studio': 1.3,                   # Studios
-        'planetarium': 2.7,              # Planetariums
-        'monastery': 1.8,                # Monasteries
-        
-        # Leisure tags (leisure=*)
-        'sports_centre': 2.0,            # Sports centers
-        'stadium': 2.5,                  # Stadiums
-        'swimming_pool': 2.0,            # Swimming pools
-        'fitness_centre': 1.8,           # Fitness centers
-        'garden': 1.5,                   # Gardens
-        'nature_reserve': 2.0,           # Nature reserves
-        'marina': 3.5, 'slipway': 2.0, 'fishing': 1.5, 'pitch': 1.5, 
-        'track': 1.5, 
-        
-        # Natural features (New)
-        'beach': 4.0, 'peak': 3.0, 'spring': 2.0, 'cave_entrance': 3.0,
-        'wood': 1.0, 'scrub': 0.5, 'water': 2.0,
-        
-        # Man Made features (New)
-        'tower': 2.0, 'lighthouse': 3.5, 'pier': 3.0, 'water_tower': 1.5, 
-        'windmill': 2.0,
-        
-        # Building tags
-        'building_temple': 1.5,          # Temples
-        'building_church': 1.5,          # Churches
-        'building_mosque': 1.5,          # Mosques
-        'building_cathedral': 2.0,       # Cathedrals
-        'building_chapel': 1.3,          # Chapels
-        'building_museum': 2.8,          # Museum buildings
-        'building_stadium': 2.5,         # Stadium buildings
-        'building_cinema': 2.0,          # Cinema buildings
-        'building_grandstand': 2.0,      # Grandstands
+    "cultural": {
+        "theatre": 2.5,
+        "cinema": 2.0,
+        "museum": 2.8,
+        "library": 2.3,
+        "arts_centre": 2.0,
+        "gallery": 1.8,
+        "place_of_worship": 1.5,
+        "park": 1.8,
+        "playground": 1.3,
+        "community_centre": 1.8,
+        "social_centre": 1.5,
+        "fountain": 1.0,
+        "monument": 1.5,
+        "viewpoint": 1.3,
+        "attraction": 2.0,
+        "artwork": 1.0,
+        "clock": 0.8,
+        "memorial": 1.2,
+        "wayside_shrine": 0.8,
+        "events_venue": 2.3,
+        "conference_centre": 2.5,
+        "exhibition_centre": 2.3,
+        "studio": 1.3,
+        "planetarium": 2.7,
+        "monastery": 1.8,
+        "sports_centre": 2.0,
+        "stadium": 2.5,
+        "swimming_pool": 2.0,
+        "fitness_centre": 1.8,
+        "garden": 1.5,
+        "nature_reserve": 2.0,
+        "marina": 3.5,
+        "slipway": 2.0,
+        "fishing": 1.5,
+        "pitch": 1.5,
+        "track": 1.5,
+        "beach": 4.0,
+        "peak": 3.0,
+        "spring": 2.0,
+        "cave_entrance": 3.0,
+        "wood": 1.0,
+        "scrub": 0.5,
+        "water": 2.0,
+        "tower": 2.0,
+        "lighthouse": 3.5,
+        "pier": 3.0,
+        "water_tower": 1.5,
+        "windmill": 2.0,
+        "building_temple": 1.5,
+        "building_church": 1.5,
+        "building_mosque": 1.5,
+        "building_cathedral": 2.0,
+        "building_chapel": 1.3,
+        "building_museum": 2.8,
+        "building_stadium": 2.5,
+        "building_cinema": 2.0,
+        "building_grandstand": 2.0,
     },
-    
-    # ========================================================================
-    # PREMIUM AMENITIES CATEGORY
-    # ========================================================================
-    'premium': {
-        # Amenity tags
-        'mall': 3.0,                     # Shopping malls
-        'hotel': 2.5,                    # Hotels
-        'gym': 1.8,                      # Gyms
-        'spa': 2.3,                      # Spas
-        'golf_course': 3.0,              # Golf courses
-        'resort': 3.0,                   # Resorts
-        'fitness_centre': 1.8,           # Fitness centers
-        'swimming_pool': 2.0,            # Swimming pools
-        'sauna': 1.8,                    # Saunas
-        'country_club': 2.8,             # Country clubs
-        'sports_centre': 2.0,            # Sports centers
-        'stadium': 2.5,                  # Stadiums
-        'marina': 2.5,                   # Marinas
-        'casino': 2.0,                   # Casinos
-        'nightclub': 1.5,                # Nightclubs
-        
-        # Building tags
-        'building_hotel': 2.5,           # Hotel buildings
-        'building_hostel': 2.0,          # Hostels
-        'building_stadium': 2.5,         # Stadium buildings
+    "premium": {
+        "mall": 3.0,
+        "hotel": 2.5,
+        "gym": 1.8,
+        "spa": 2.3,
+        "golf_course": 3.0,
+        "resort": 3.0,
+        "fitness_centre": 1.8,
+        "swimming_pool": 2.0,
+        "sauna": 1.8,
+        "country_club": 2.8,
+        "sports_centre": 2.0,
+        "stadium": 2.5,
+        "marina": 2.5,
+        "casino": 2.0,
+        "nightclub": 1.5,
+        "building_hotel": 2.5,
+        "building_hostel": 2.0,
+        "building_stadium": 2.5,
     },
-    
-    # ========================================================================
-    # ESSENTIAL SERVICES CATEGORY
-    # ========================================================================
-    'essential': {
-        # Amenity tags
-        'hospital': 3.0,                 # Hospitals
-        'clinic': 2.0,                   # Clinics
-        'pharmacy': 1.8,                 # Pharmacies
-        'supermarket': 2.5,              # Supermarkets
-        'grocery': 2.3,                  # Grocery stores
-        'bank': 2.3,                     # Banks
-        'atm': 1.0,                      # ATMs
-        'post_office': 2.0,              # Post offices
-        'police': 2.8,                   # Police stations
-        'fire_station': 2.8,             # Fire stations
-        'doctors': 2.0,                  # Doctors
-        'dentist': 1.5,                  # Dentists
-        'fuel': 2.0,                     # Fuel stations
-        'convenience': 1.8,              # Convenience stores
-        'toilets': 1.5,                  # Public toilets
-        'drinking_water': 1.3,           # Drinking water
-        'telephone': 0.9,                # Public phones
-        'vending_machine': 0.8,          # Vending machines
-        'payment_terminal': 1.0,         # Payment terminals
+    "essential": {
+        "hospital": 3.0,
+        "clinic": 2.0,
+        "pharmacy": 1.8,
+        "supermarket": 2.5,
+        "grocery": 2.3,
+        "bank": 2.3,
+        "atm": 1.0,
+        "post_office": 2.0,
+        "police": 2.8,
+        "fire_station": 2.8,
+        "doctors": 2.0,
+        "dentist": 1.5,
+        "fuel": 2.0,
+        "convenience": 1.8,
+        "toilets": 1.5,
+        "drinking_water": 1.3,
+        "telephone": 0.9,
+        "vending_machine": 0.8,
+        "payment_terminal": 1.0,
     },
-    
-    # ========================================================================
-    # EMPLOYMENT & BUSINESS CATEGORY
-    # ========================================================================
-    'employment': {
-        # Amenity tags
-        'office': 1.8,                   # Generic offices
-        'coworking_space': 2.0,          # Coworking spaces
-        'research_institute': 2.5,       # Research institutes
-        'industrial': 1.3,               # Industrial areas
-        'factory': 1.5,                  # Factories
-        'warehouse': 1.2,                # Warehouses
-        'craft': 1.0,                    # Craft workshops
-        'workshop': 1.2,                 # Workshops
-        'research': 2.3,                 # Research facilities
-        
-        # Office tags (office=*)
-        'office_company': 1.8,           # Companies
-        'office_it': 2.0,                # IT companies
-        'office_coworking': 2.0,         # Coworking offices
-        'office_lawyer': 1.8,            # Law firms
-        'office_estate_agent': 1.5,      # Real estate
-        'office_travel_agent': 1.4,      # Travel agents
-        'office_newspaper': 1.7,         # Newspapers
-        'office_telecommunication': 1.8, # Telecom companies
-        'office_logistics': 1.6,         # Logistics companies
-        'office_yes': 1.5,               # Generic offices
-        'office_educational_institution': 2.0, # Educational offices
-        'office_research': 2.3,          # Research offices
-        'office_employment_agency': 1.5, # Employment agencies
-        'office_advertising_agency': 1.5,# Advertising agencies
-        'office_architect': 1.8, 'office_accountant': 1.8, 'office_consulting': 1.8,
-        'office_insurance': 1.8, 'office_financial': 2.0, 'office_government': 2.3,
-        'office_ngo': 1.5, 'office_notary': 1.8, 'office_political_party': 1.5,
-        
-        # Craft tags (Mapped to Employment)
-        'carpenter': 1.2, 'plumber': 1.2, 'electrician': 1.2, 'shoemaker': 1.0,
-        'tailor': 1.0, 'key_cutter': 1.0, 'photographer': 1.5, 
-        'electronics_repair': 1.5,
-        
-        # Building tags
-        'building_office': 1.8,          # Office buildings
-        'building_commercial': 1.5,      # Commercial buildings
-        'building_retail': 1.4,          # Retail buildings
-        'building_industrial': 1.3,      # Industrial buildings
+    "employment": {
+        "office": 1.8,
+        "coworking_space": 2.0,
+        "research_institute": 2.5,
+        "industrial": 1.3,
+        "factory": 1.5,
+        "warehouse": 1.2,
+        "craft": 1.0,
+        "workshop": 1.2,
+        "research": 2.3,
+        "office_company": 1.8,
+        "office_it": 2.0,
+        "office_coworking": 2.0,
+        "office_lawyer": 1.8,
+        "office_estate_agent": 1.5,
+        "office_travel_agent": 1.4,
+        "office_newspaper": 1.7,
+        "office_telecommunication": 1.8,
+        "office_logistics": 1.6,
+        "office_yes": 1.5,
+        "office_educational_institution": 2.0,
+        "office_research": 2.3,
+        "office_employment_agency": 1.5,
+        "office_advertising_agency": 1.5,
+        "office_architect": 1.8,
+        "office_accountant": 1.8,
+        "office_consulting": 1.8,
+        "office_insurance": 1.8,
+        "office_financial": 2.0,
+        "office_government": 2.3,
+        "office_ngo": 1.5,
+        "office_notary": 1.8,
+        "office_political_party": 1.5,
+        "carpenter": 1.2,
+        "plumber": 1.2,
+        "electrician": 1.2,
+        "shoemaker": 1.0,
+        "tailor": 1.0,
+        "key_cutter": 1.0,
+        "photographer": 1.5,
+        "electronics_repair": 1.5,
+        "building_office": 1.8,
+        "building_commercial": 1.5,
+        "building_retail": 1.4,
+        "building_industrial": 1.3,
     },
-    
-    # ========================================================================
-    # CIVIC & GOVERNMENT CATEGORY
-    # ========================================================================
-    'civic': {
-        # Amenity tags
-        'townhall': 2.8,                 # Town halls
-        'courthouse': 2.5,               # Courthouses
-        'police': 2.8,                   # Police stations
-        'fire_station': 2.8,             # Fire stations
-        'post_office': 2.0,              # Post offices
-        'embassy': 2.5,                  # Embassies
-        'public_building': 2.0,          # Public buildings
-        'social_facility': 1.8,          # Social facilities
-        'recycling': 1.3,                # Recycling centers
-        'community_centre': 1.9,         # Community centers
-        
-        # Office tags (office=*)
-        'office_government': 2.3,        # Government offices
-        'office_diplomatic': 2.5,        # Diplomatic offices
-        'office_ngo': 1.5,               # NGOs
-        'office_association': 1.6,       # Associations
-        'office_political_party': 1.7,   # Political parties
-        'office_religion': 1.5,          # Religious offices
-        'office_foundation': 1.6,        # Foundations
-        
-        # Building tags
-        'building_government': 2.7,      # Government buildings
-        'building_public': 2.0,          # Public buildings
-        'building_fire_station': 2.8,    # Fire station buildings
-        'building_police': 2.8,          # Police station buildings
-        'building_community_centre': 1.9,# Community center buildings
-    }
+    "civic": {
+        "townhall": 2.8,
+        "courthouse": 2.5,
+        "police": 2.8,
+        "fire_station": 2.8,
+        "post_office": 2.0,
+        "embassy": 2.5,
+        "public_building": 2.0,
+        "social_facility": 1.8,
+        "recycling": 1.3,
+        "community_centre": 1.9,
+        "office_government": 2.3,
+        "office_diplomatic": 2.5,
+        "office_ngo": 1.5,
+        "office_association": 1.6,
+        "office_political_party": 1.7,
+        "office_religion": 1.5,
+        "office_foundation": 1.6,
+        "building_government": 2.7,
+        "building_public": 2.0,
+        "building_fire_station": 2.8,
+        "building_police": 2.8,
+        "building_community_centre": 1.9,
+    },
 }
 
 # ============================================================================
 # DENSITY THRESHOLDS (POIs per km²)
 # ============================================================================
-# "Good" density for a well-served Indian urban area within a 1km radius.
-# At this density, a location scores ~70 on the density component.
-# Excellent (score=100) is 2.5x these values; fair (score=40) is 0.4x.
-#
-# Calibrated from Indian OSM data:
-#   Metro areas (Mumbai, Delhi, Bengaluru): typically 2x-5x these values
-#   Urban fringe (Whitefield, Navi Mumbai):  0.8x-1.5x
-#   Rural/semi-urban:                        0.05x-0.3x
+# "Good" density for a well-served Indian urban area within a 1 km radius.
+# Score ~70 at this density; excellent (score=100) at 2.5×; fair (score=40) at 0.4×.
+
 DENSITY_THRESHOLDS = {
-    'healthcare': 5.0,    # ~4 clinics+pharmacies per km² in urban area
-    'education':  3.0,    # ~2-3 schools+coaching per km²
-    'finance':    4.0,    # ~3 banks+ATMs per km²
-    'shopping':  18.0,    # high count: kirana + retail shops are dense
-    'food':      12.0,    # restaurants+cafes very dense in cities
-    'premium':    2.0,    # malls+hotels less common
-    'transport':  4.0,    # bus stops + fuel + parking
-    'cultural':   4.0,    # parks+places of worship
-    'essential':  10.0,   # pharmacies+ATMs+fuel+convenience
-    'employment': 2.0,    # office density
-    'civic':      1.5,    # police+post offices sparse even in cities
+    "healthcare": 5.0,
+    "education": 3.0,
+    "finance": 4.0,
+    "shopping": 18.0,
+    "food": 12.0,
+    "premium": 2.0,
+    "transport": 4.0,
+    "cultural": 4.0,
+    "essential": 10.0,
+    "employment": 2.0,
+    "civic": 1.5,
 }
 
 # ============================================================================
 # CATEGORY MAPPINGS
 # ============================================================================
-# Maps POI types to categories for classification
+
 CATEGORIES = {
-    'healthcare': [
-        'hospital', 'clinic', 'pharmacy', 'doctors', 'dentist',
-        'health_centre', 'nursing_home', 'veterinary', 'medical',
-        'chemist', 'physiotherapist', 'optician', 'laboratory',
-        'blood_bank', 'ayurvedic', 'homeopathy', 'unani',
-        'building_hospital'
+    "healthcare": [
+        "hospital",
+        "clinic",
+        "pharmacy",
+        "doctors",
+        "dentist",
+        "health_centre",
+        "nursing_home",
+        "veterinary",
+        "medical",
+        "chemist",
+        "physiotherapist",
+        "optician",
+        "laboratory",
+        "blood_bank",
+        "ayurvedic",
+        "homeopathy",
+        "unani",
+        "building_hospital",
     ],
-    'education': [
-        'university', 'college', 'school', 'kindergarten',
-        'coaching', 'training', 'language_school', 'library',
-        'music_school', 'driving_school', 'research_institute', 'prep_school',
-        'building_school', 'building_college', 'building_university'
+    "education": [
+        "university",
+        "college",
+        "school",
+        "kindergarten",
+        "coaching",
+        "training",
+        "language_school",
+        "library",
+        "music_school",
+        "driving_school",
+        "research_institute",
+        "prep_school",
+        "building_school",
+        "building_college",
+        "building_university",
     ],
-    'finance': [
-        'bank', 'atm', 'bureau_de_change', 'money_transfer',
-        'post_office', 'post_box', 'insurance', 'financial_advice',
-        'accountant', 'tax_advisor',
-        'office_insurance', 'office_financial', 'office_accountant',
-        'building_bank'
+    "finance": [
+        "bank",
+        "atm",
+        "bureau_de_change",
+        "money_transfer",
+        "post_office",
+        "post_box",
+        "insurance",
+        "financial_advice",
+        "accountant",
+        "tax_advisor",
+        "office_insurance",
+        "office_financial",
+        "office_accountant",
+        "building_bank",
     ],
-    'shopping': [
-        # Major retail
-        'mall', 'supermarket', 'marketplace', 'department_store',
-        'convenience', 'wholesale', 'variety_store',
-        # All shop types
-        'shop', 'kirana', 'general', 'butcher', 'bakery', 'greengrocer',
-        'seafood', 'deli', 'confectionery', 'beverages', 'alcohol',
-        'tea', 'coffee', 'furniture', 'electronics', 'books', 'clothes',
-        'shoes', 'toys', 'sports', 'jewelry', 'jewellery', 'mobile_phone',
-        'hardware', 'florist', 'gift', 'stationery', 'cosmetics',
-        'perfumery', 'chemist', 'medical_supply', 'optician',
-        'doityourself', 'garden_centre', 'paint', 'carpet', 'curtain',
-        'interior_decoration', 'bed', 'kitchen', 'bathroom_furnishing',
-        'car', 'car_parts', 'car_repair', 'motorcycle', 'bicycle', 'tyres',
-        'pet', 'art', 'craft', 'fabric', 'wool', 'newsagent',
-        'lottery', 'ticket', 'travel_agency', 'laundry', 'dry_cleaning',
-        'trade', 'antiques', 'baby_goods', 'beauty', 'hairdresser',
-        'gas', 'copyshop', 'houseware', 'computer', 'video_games',
-        'music', 'musical_instrument', 'photo', 'camera', 'outdoor',
-        'fishing', 'hunting', 'fashion', 'watches', 'chocolate',
-        'tobacco', 'e-cigarette', 'vape', 'bag', 'lighting',
-        'building_retail', 'building_kiosk'
+    "shopping": [
+        "mall",
+        "supermarket",
+        "marketplace",
+        "department_store",
+        "convenience",
+        "wholesale",
+        "variety_store",
+        "shop",
+        "kirana",
+        "general",
+        "butcher",
+        "bakery",
+        "greengrocer",
+        "seafood",
+        "deli",
+        "confectionery",
+        "beverages",
+        "alcohol",
+        "tea",
+        "coffee",
+        "furniture",
+        "electronics",
+        "books",
+        "clothes",
+        "shoes",
+        "toys",
+        "sports",
+        "jewelry",
+        "jewellery",
+        "mobile_phone",
+        "hardware",
+        "florist",
+        "gift",
+        "stationery",
+        "cosmetics",
+        "perfumery",
+        "chemist",
+        "medical_supply",
+        "optician",
+        "doityourself",
+        "garden_centre",
+        "paint",
+        "carpet",
+        "curtain",
+        "interior_decoration",
+        "bed",
+        "kitchen",
+        "bathroom_furnishing",
+        "car",
+        "car_parts",
+        "car_repair",
+        "motorcycle",
+        "bicycle",
+        "tyres",
+        "pet",
+        "art",
+        "craft",
+        "fabric",
+        "wool",
+        "newsagent",
+        "lottery",
+        "ticket",
+        "travel_agency",
+        "laundry",
+        "dry_cleaning",
+        "trade",
+        "antiques",
+        "baby_goods",
+        "beauty",
+        "hairdresser",
+        "gas",
+        "copyshop",
+        "houseware",
+        "computer",
+        "video_games",
+        "music",
+        "musical_instrument",
+        "photo",
+        "camera",
+        "outdoor",
+        "fishing",
+        "hunting",
+        "fashion",
+        "watches",
+        "chocolate",
+        "tobacco",
+        "e-cigarette",
+        "vape",
+        "bag",
+        "lighting",
+        "building_retail",
+        "building_kiosk",
     ],
-    'food': [
-        'restaurant', 'cafe', 'fast_food', 'food_court', 'bar',
-        'pub', 'biergarten', 'ice_cream', 'tea', 'coffee_shop',
-        'bistro', 'canteen', 'pizza', 'burger', 'chicken',
-        'sandwich', 'kebab', 'sushi', 'noodle', 'pasta',
-        'seafood', 'steak_house', 'indian', 'chinese', 'italian',
-        'internet_cafe'
+    "food": [
+        "restaurant",
+        "cafe",
+        "fast_food",
+        "food_court",
+        "bar",
+        "pub",
+        "biergarten",
+        "ice_cream",
+        "tea",
+        "coffee_shop",
+        "bistro",
+        "canteen",
+        "pizza",
+        "burger",
+        "chicken",
+        "sandwich",
+        "kebab",
+        "sushi",
+        "noodle",
+        "pasta",
+        "seafood",
+        "steak_house",
+        "indian",
+        "chinese",
+        "italian",
+        "internet_cafe",
     ],
-    'transport': [
-        'bus_stop', 'bus_station', 'taxi', 'fuel', 'parking',
-        'parking_entrance', 'parking_space', 'bicycle_rental',
-        'bicycle_parking', 'motorcycle_parking', 'car_rental',
-        'car_wash', 'charging_station', 'car_sharing',
-        'ferry_terminal', 'rest_area', 'services', 'elevator',
-        # Aeroway
-        'aerodrome', 'terminal', 'helipad', 'heliport', 'gate',
-        # Aerialway
-        'station', 'cable_car', 'gondola', 'chair_lift',
-        # Waterway
-        'dock', 'boatyard', 'dam',
-        # Railway
-        'railway_station', 'railway_subway', 'railway_subway_entrance',
-        'railway_stop', 'railway_platform', 'railway_halt',
-        'railway_tram_stop', 'railway_light_rail', 'railway_monorail',
-        # Public transport
-        'public_transport_station', 'public_transport_platform',
-        'public_transport_stop_position', 'public_transport_ferry_terminal',
-        # Buildings
-        'building_train_station', 'building_transportation', 'building_parking'
+    "transport": [
+        "bus_stop",
+        "bus_station",
+        "taxi",
+        "fuel",
+        "parking",
+        "parking_entrance",
+        "parking_space",
+        "bicycle_rental",
+        "bicycle_parking",
+        "motorcycle_parking",
+        "car_rental",
+        "car_wash",
+        "charging_station",
+        "car_sharing",
+        "ferry_terminal",
+        "rest_area",
+        "services",
+        "elevator",
+        "aerodrome",
+        "terminal",
+        "helipad",
+        "heliport",
+        "gate",
+        "station",
+        "cable_car",
+        "gondola",
+        "chair_lift",
+        "dock",
+        "boatyard",
+        "dam",
+        "railway_station",
+        "railway_subway",
+        "railway_subway_entrance",
+        "railway_stop",
+        "railway_platform",
+        "railway_halt",
+        "railway_tram_stop",
+        "railway_light_rail",
+        "railway_monorail",
+        "public_transport_station",
+        "public_transport_platform",
+        "public_transport_stop_position",
+        "public_transport_ferry_terminal",
+        "building_train_station",
+        "building_transportation",
+        "building_parking",
     ],
-    'cultural': [
-        'theatre', 'cinema', 'museum', 'library', 'arts_centre',
-        'gallery', 'place_of_worship', 'park', 'playground',
-        'community_centre', 'social_centre', 'fountain',
-        'monument', 'viewpoint', 'attraction', 'artwork',
-        'clock', 'memorial', 'wayside_shrine', 'events_venue',
-        'conference_centre', 'exhibition_centre', 'studio',
-        'planetarium', 'monastery',
-        'sports_centre', 'stadium', 'swimming_pool', 'fitness_centre',
-        'garden', 'nature_reserve',
-        # Leisure extras
-        'marina', 'slipway', 'fishing', 'pitch', 'track',
-        # Natural features
-        'beach', 'peak', 'spring', 'cave_entrance', 'wood', 'scrub', 'water',
-        # Man-made landmarks
-        'tower', 'lighthouse', 'pier', 'water_tower', 'windmill',
-        # Buildings
-        'building_temple', 'building_church', 'building_mosque',
-        'building_cathedral', 'building_chapel', 'building_museum',
-        'building_stadium', 'building_cinema', 'building_grandstand'
+    "cultural": [
+        "theatre",
+        "cinema",
+        "museum",
+        "library",
+        "arts_centre",
+        "gallery",
+        "place_of_worship",
+        "park",
+        "playground",
+        "community_centre",
+        "social_centre",
+        "fountain",
+        "monument",
+        "viewpoint",
+        "attraction",
+        "artwork",
+        "clock",
+        "memorial",
+        "wayside_shrine",
+        "events_venue",
+        "conference_centre",
+        "exhibition_centre",
+        "studio",
+        "planetarium",
+        "monastery",
+        "sports_centre",
+        "stadium",
+        "swimming_pool",
+        "fitness_centre",
+        "garden",
+        "nature_reserve",
+        "marina",
+        "slipway",
+        "fishing",
+        "pitch",
+        "track",
+        "beach",
+        "peak",
+        "spring",
+        "cave_entrance",
+        "wood",
+        "scrub",
+        "water",
+        "tower",
+        "lighthouse",
+        "pier",
+        "water_tower",
+        "windmill",
+        "building_temple",
+        "building_church",
+        "building_mosque",
+        "building_cathedral",
+        "building_chapel",
+        "building_museum",
+        "building_stadium",
+        "building_cinema",
+        "building_grandstand",
     ],
-    'premium': [
-        'mall', 'hotel', 'gym', 'spa', 'golf_course', 'resort',
-        'fitness_centre', 'swimming_pool', 'sauna', 'country_club',
-        'sports_centre', 'stadium', 'marina', 'casino', 'nightclub',
-        'building_hotel', 'building_hostel', 'building_stadium'
+    "premium": [
+        "mall",
+        "hotel",
+        "gym",
+        "spa",
+        "golf_course",
+        "resort",
+        "fitness_centre",
+        "swimming_pool",
+        "sauna",
+        "country_club",
+        "sports_centre",
+        "stadium",
+        "marina",
+        "casino",
+        "nightclub",
+        "building_hotel",
+        "building_hostel",
+        "building_stadium",
     ],
-    'essential': [
-        'hospital', 'clinic', 'pharmacy', 'supermarket', 'grocery',
-        'bank', 'atm', 'post_office', 'police', 'fire_station',
-        'doctors', 'dentist', 'fuel', 'convenience',
-        'toilets', 'drinking_water', 'telephone', 'vending_machine',
-        'payment_terminal'
+    "essential": [
+        "hospital",
+        "clinic",
+        "pharmacy",
+        "supermarket",
+        "grocery",
+        "bank",
+        "atm",
+        "post_office",
+        "police",
+        "fire_station",
+        "doctors",
+        "dentist",
+        "fuel",
+        "convenience",
+        "toilets",
+        "drinking_water",
+        "telephone",
+        "vending_machine",
+        "payment_terminal",
     ],
-    'employment': [
-        'office', 'coworking_space', 'research_institute', 'industrial',
-        'factory', 'warehouse', 'craft', 'workshop', 'research',
-        'office_company', 'office_it', 'office_coworking', 'office_lawyer',
-        'office_estate_agent', 'office_travel_agent', 'office_newspaper',
-        'office_telecommunication', 'office_logistics', 'office_yes',
-        'office_educational_institution', 'office_research',
-        'office_employment_agency', 'office_advertising_agency',
-        'office_architect', 'office_accountant', 'office_consulting',
-        'office_insurance', 'office_financial', 'office_government',
-        'office_ngo', 'office_notary', 'office_political_party',
-        # Craft workers
-        'carpenter', 'plumber', 'electrician', 'shoemaker',
-        'tailor', 'key_cutter', 'photographer', 'electronics_repair',
-        # Buildings
-        'building_office', 'building_commercial', 'building_retail',
-        'building_industrial'
+    "employment": [
+        "office",
+        "coworking_space",
+        "research_institute",
+        "industrial",
+        "factory",
+        "warehouse",
+        "craft",
+        "workshop",
+        "research",
+        "office_company",
+        "office_it",
+        "office_coworking",
+        "office_lawyer",
+        "office_estate_agent",
+        "office_travel_agent",
+        "office_newspaper",
+        "office_telecommunication",
+        "office_logistics",
+        "office_yes",
+        "office_educational_institution",
+        "office_research",
+        "office_employment_agency",
+        "office_advertising_agency",
+        "office_architect",
+        "office_accountant",
+        "office_consulting",
+        "office_insurance",
+        "office_financial",
+        "office_government",
+        "office_ngo",
+        "office_notary",
+        "office_political_party",
+        "carpenter",
+        "plumber",
+        "electrician",
+        "shoemaker",
+        "tailor",
+        "key_cutter",
+        "photographer",
+        "electronics_repair",
+        "building_office",
+        "building_commercial",
+        "building_retail",
+        "building_industrial",
     ],
-    'civic': [
-        'townhall', 'courthouse', 'police', 'fire_station',
-        'post_office', 'embassy', 'public_building', 'social_facility',
-        'recycling', 'community_centre',
-        'office_government', 'office_diplomatic', 'office_ngo',
-        'office_association', 'office_political_party', 'office_religion',
-        'office_foundation',
-        'building_government', 'building_public', 'building_fire_station',
-        'building_police', 'building_community_centre'
-    ]
+    "civic": [
+        "townhall",
+        "courthouse",
+        "police",
+        "fire_station",
+        "post_office",
+        "embassy",
+        "public_building",
+        "social_facility",
+        "recycling",
+        "community_centre",
+        "office_government",
+        "office_diplomatic",
+        "office_ngo",
+        "office_association",
+        "office_political_party",
+        "office_religion",
+        "office_foundation",
+        "building_government",
+        "building_public",
+        "building_fire_station",
+        "building_police",
+        "building_community_centre",
+    ],
 }
 
 # ============================================================================
-# CATEGORY WEIGHTS FOR FINAL AMENITY INDEX
+# CATEGORY WEIGHTS FOR FINAL AMENITY INDEX (sum = 1.0)
 # ============================================================================
-# Sum = 1.0
+
 CATEGORY_WEIGHTS = {
-    'essential': 0.24,
-    'healthcare': 0.17,
-    'education': 0.14,
-    'transport': 0.11,
-    'finance': 0.09,
-    'shopping': 0.08,
-    'food': 0.05,
-    'cultural': 0.04,
-    'premium': 0.03,
-    'employment': 0.03,
-    'civic': 0.02
+    "essential": 0.24,
+    "healthcare": 0.17,
+    "education": 0.14,
+    "transport": 0.11,
+    "finance": 0.09,
+    "shopping": 0.08,
+    "food": 0.05,
+    "cultural": 0.04,
+    "premium": 0.03,
+    "employment": 0.03,
+    "civic": 0.02,
 }
 
 # ============================================================================
-# COMPONENT WEIGHTS FOR CATEGORY SCORING
+# COMPONENT WEIGHTS FOR CATEGORY SCORING (sum = 1.0)
 # ============================================================================
-# Sum = 1.0
+
 COMPONENT_WEIGHTS = {
-    'density': 0.25,
-    'proximity': 0.20,
-    'quality': 0.20,
-    'accessibility': 0.15,
-    'spatial': 0.10,
-    'economic': 0.10
+    "density": 0.25,
+    "proximity": 0.20,
+    "quality": 0.20,
+    "accessibility": 0.15,
+    "spatial": 0.10,
+    "economic": 0.10,
 }
 
 # ============================================================================
-# ADVANCED SCORING PARAMETERS
+# SCORING PARAMETERS
 # ============================================================================
 
-# Logarithmic Density Scaling
 DENSITY_LOG_NORMALIZATION = 3
-
-# Exponential Proximity Decay
 PROXIMITY_DECAY_RATE_KM = 1.0
 PROXIMITY_DECAY_RATE_AVERAGE_KM = 2.0
 
-# Category-Specific Proximity Decay Rates
-# Category-Specific Proximity Decay Rates (lambda in exponential e^{-lambda*d})
-# Higher lambda = steeper decay = scoring penalizes distance more aggressively.
-# Healthcare/essential: people walk or take auto-rickshaw → sharp decay expected
-# Cultural/employment: people drive → softer decay
-# At lambda=1.5: 0.5km→47, 1.0km→22, 2.0km→5   (healthcare urgency)
-# At lambda=0.8: 0.5km→67, 1.0km→45, 2.0km→20   (employment / driven)
+# Category-specific proximity decay rates (lambda in exponential e^{-lambda*d}).
+# Higher lambda = steeper decay = distance penalised more aggressively.
 CATEGORY_PROXIMITY_DECAY_RATES = {
-    'essential':   1.2,   # pharmacies, ATMs — need nearby (was 0.8)
-    'healthcare':  1.5,   # clinics, hospitals — urgent; 2km should score <5
-    'education':   1.0,   # schools — moderate walk
-    'shopping':    1.0,   # kirana to mall — varies; moderate
-    'food':        1.0,   # restaurants — moderate walk (was 0.9)
-    'transport':   1.5,   # bus stops — very walkable; far = poor
-    'finance':     1.0,   # banks/ATMs — moderate walk
-    'cultural':    0.8,   # parks, temples — farther travel acceptable
-    'premium':     0.7,   # malls, hotels — driven to; softest decay
-    'employment':  0.7,   # offices — commuted to (was 2.0 — too aggressive)
-    'civic':       0.9,   # police, post office — moderate walk
+    "essential": 1.2,
+    "healthcare": 1.5,
+    "education": 1.0,
+    "shopping": 1.0,
+    "food": 1.0,
+    "transport": 1.5,
+    "finance": 1.0,
+    "cultural": 0.8,
+    "premium": 0.7,
+    "employment": 0.7,
+    "civic": 0.9,
 }
 
-# Category-Specific Density Log Normalization
 CATEGORY_DENSITY_LOG_NORMALIZATION = {
-    'essential': 3.0,
-    'healthcare': 2.5,
-    'education': 2.8,
-    'shopping': 4.0,
-    'food': 4.5,
-    'transport': 2.0,
-    'finance': 3.5,
-    'cultural': 3.0,
-    'premium': 2.5,
-    'employment': 3.5,
-    'civic': 2.8,
+    "essential": 3.0,
+    "healthcare": 2.5,
+    "education": 2.8,
+    "shopping": 4.0,
+    "food": 4.5,
+    "transport": 2.0,
+    "finance": 3.5,
+    "cultural": 3.0,
+    "premium": 2.5,
+    "employment": 3.5,
+    "civic": 2.8,
 }
 
-# Relative Density Scaling
 RELATIVE_DENSITY_SCALE = 500
-
-# Spatial Clustering Parameters
 SPATIAL_CLUSTERING_DIVISOR = 3.0
 
-# Premium Brand Lists (India-Specific)
 PREMIUM_BRANDS = {
-    'food': ['Starbucks', 'KFC', 'McDonald', 'Pizza Hut', 'Domino', 'Burger King', 'Subway', 'Cafe Coffee Day'],
-    'shopping': ['Reliance', 'Big Bazaar', 'DMart', 'Westside', 'Lifestyle', 'Pantaloons', 'Shoppers Stop'],
-    'healthcare': ['Apollo', 'Fortis', 'Max', 'Manipal', 'Columbia Asia', 'Narayana', 'KIMS'],
-    'finance': ['HDFC', 'ICICI', 'Axis', 'Kotak', 'SBI', 'HSBC', 'Citibank'],
-    'premium': ['Gold\'s Gym', 'Fitness First', 'Cult.fit', 'Talwalkars'],
+    "food": [
+        "Starbucks",
+        "KFC",
+        "McDonald",
+        "Pizza Hut",
+        "Domino",
+        "Burger King",
+        "Subway",
+        "Cafe Coffee Day",
+    ],
+    "shopping": [
+        "Reliance",
+        "Big Bazaar",
+        "DMart",
+        "Westside",
+        "Lifestyle",
+        "Pantaloons",
+        "Shoppers Stop",
+    ],
+    "healthcare": [
+        "Apollo",
+        "Fortis",
+        "Max",
+        "Manipal",
+        "Columbia Asia",
+        "Narayana",
+        "KIMS",
+    ],
+    "finance": ["HDFC", "ICICI", "Axis", "Kotak", "SBI", "HSBC", "Citibank"],
+    "premium": ["Gold's Gym", "Fitness First", "Cult.fit", "Talwalkars"],
 }
 
-# Quality Tier Thresholds
 QUALITY_THRESHOLDS = {
-    'healthcare': {'low': 0.3, 'mid': 0.8, 'high': 1.5},
-    'education': {'low': 0.2, 'mid': 0.5, 'high': 1.0},
-    'shopping': {'low': 0.1, 'mid': 0.3, 'high': 0.8},
-    'transport': {'low': 0.2, 'mid': 0.5, 'high': 1.2},
-    'default': {'low': 0.5, 'mid': 1.0, 'high': 2.0}
+    "healthcare": {"low": 0.3, "mid": 0.8, "high": 1.5},
+    "education": {"low": 0.2, "mid": 0.5, "high": 1.0},
+    "shopping": {"low": 0.1, "mid": 0.3, "high": 0.8},
+    "transport": {"low": 0.2, "mid": 0.5, "high": 1.2},
+    "default": {"low": 0.5, "mid": 1.0, "high": 2.0},
 }
 
-# Gravity Model Log Scaling
 GRAVITY_LOG_MIN = 0.1
 GRAVITY_LOG_MAX = 100.0
 
-
-
-# Dominance Penalty Parameters
 DOMINANCE_THRESHOLD = 0.5
 DOMINANCE_MULTIPLIER = 2.0
 
-# Gini Coefficient Penalty Parameters
 GINI_PENALTY_THRESHOLD = 0.4
 GINI_PENALTY_MAX = 0.15
 
-# Simpson's Diversity Boost Parameters
 SIMPSON_BOOST_MAX = 0.20
 
-# Data Quality Penalty Thresholds
-# Format: (max_poi_count, penalty_fraction)
-# Used by amenity_calculator.py to apply additive penalties
 DATA_QUALITY_POI_THRESHOLDS = {
-    'very_sparse': 5,    # < 5 POIs  → 20% penalty
-    'sparse':      20,   # < 20 POIs → 10% penalty
-    'moderate':    40,   # < 40 POIs → 5% penalty
-    # >= 40 POIs → no penalty
-}
-DATA_QUALITY_PENALTIES = {
-    'very_sparse': 0.20,
-    'sparse':      0.10,
-    'moderate':    0.05,
-    'good':        0.00,
+    "very_sparse": 5,
+    "sparse": 20,
+    "moderate": 40,
 }
 
+DATA_QUALITY_PENALTIES = {
+    "very_sparse": 0.20,
+    "sparse": 0.10,
+    "moderate": 0.05,
+    "good": 0.00,
+}
 
 # ============================================================================
 # COMPLIANCE CHECKS
 # ============================================================================
-# Ensure weights sum to 1.0 (approx)
+
 if abs(sum(CATEGORY_WEIGHTS.values()) - 1.0) > 0.01:
-    raise ValueError(f"CATEGORY_WEIGHTS sum to {sum(CATEGORY_WEIGHTS.values())}, expected 1.0")
+    raise ValueError(
+        f"CATEGORY_WEIGHTS sum to {sum(CATEGORY_WEIGHTS.values())}, expected 1.0"
+    )
 
 if abs(sum(COMPONENT_WEIGHTS.values()) - 1.0) > 0.01:
-    raise ValueError(f"COMPONENT_WEIGHTS sum to {sum(COMPONENT_WEIGHTS.values())}, expected 1.0")
+    raise ValueError(
+        f"COMPONENT_WEIGHTS sum to {sum(COMPONENT_WEIGHTS.values())}, expected 1.0"
+    )
 
-
-# India-calibrated target POI distribution for economic scoring
-# These represent the expected share of each category in a balanced urban area
+# India-calibrated target POI distribution for economic scoring.
+# Expected share of each category in a balanced urban area.
 ECONOMIC_TARGET_PCT = {
-    'essential':   17,   # Essential services (groceries, pharmacy, police)
-    'shopping':    15,   # Retail and shops
-    'food':        12,   # Restaurants, cafes, food outlets
-    'employment':  12,   # Offices, coworking, industrial
-    'transport':   10,   # Transit, parking, fuel
-    'healthcare':   8,   # Hospitals, clinics, pharmacies
-    'cultural':     8,   # Parks, temples, museums, recreation
-    'education':    6,   # Schools, colleges, universities
-    'finance':      5,   # Banks, ATMs, post offices
-    'premium':      4,   # Hotels, gyms, spas
-    'civic':        3,   # Government, civic buildings
+    "essential": 17,
+    "shopping": 15,
+    "food": 12,
+    "employment": 12,
+    "transport": 10,
+    "healthcare": 8,
+    "cultural": 8,
+    "education": 6,
+    "finance": 5,
+    "premium": 4,
+    "civic": 3,
 }
 
-# Category Minimum Score Constraint
 CATEGORY_MIN_SCORE = 0.0
 
-# Spatial Clustering Parameters (DBSCAN)
-# EPS = 0.003° ≈ 330m — balanced between the original tight value (0.0015° ≈167m)
-# At 1km, POIs in dense cities merge into massive blobs. So we use 0.01
-# into one giant cluster; 330m captures real walkable POI hubs without over-merging.
-SPATIAL_CLUSTERING_EPS = 0.003          # degrees — kept for reference / legacy
-SPATIAL_CLUSTERING_EPS_KM = 0.33       # km-space equivalent used by FeatureExtractor
-                                         # (coords converted to km before DBSCAN)
-SPATIAL_CLUSTERING_MIN_SAMPLES = 2     # minPts=2
-# Multi-radius gradient analysis radii (km) — used by FeatureExtractor._gradient_features
+# Spatial clustering (DBSCAN)
+SPATIAL_CLUSTERING_EPS = 0.003
+SPATIAL_CLUSTERING_EPS_KM = 0.33
+SPATIAL_CLUSTERING_MIN_SAMPLES = 2
+
+# Multi-radius gradient analysis radii (km)
 GRADIENT_RADII = [0.5, 1.0, 1.5, 2.0]
 
-# Temporal Accessibility Parameters
+# Temporal accessibility
 TEMPORAL_WEEKEND_DAY = 5
 TEMPORAL_EVENING_HOUR = 20
 TEMPORAL_MORNING_HOUR = 10
 
-
 # ============================================================================
 # QUALITY CLASSIFICATION
 # ============================================================================
-# Auto-generated comprehensive lists of Premium and Basic POIs per category.
-# Used by CategoryScorer (Quality component) and FeatureExtractor (Ratios).
+
 PREMIUM_POIS = {
-    "healthcare": ['building_hospital', 'hospital'],
-    "education": ['building_college', 'building_school', 'building_university', 'college', 'research_institute', 'school', 'university'],
-    "finance": ['building_bank'],
-    "shopping": ['department_store', 'mall', 'supermarket'],
-    # Premium food: full-service restaurants, food courts, and fine-dining types.
-    # Budget/fast-food types are in BASIC_POIS['food'].
-    "food": ['food_court', 'restaurant', 'steak_house', 'sushi', 'bistro', 'seafood'],
-    "transport": ['aerodrome', 'building_train_station', 'building_transportation', 'bus_station', 'cable_car', 'chair_lift', 'dock', 'gondola', 'helipad', 'heliport', 'public_transport_ferry_terminal', 'public_transport_station', 'railway_light_rail', 'railway_monorail', 'railway_station', 'railway_subway', 'railway_subway_entrance', 'services', 'station', 'terminal'],
-    "cultural": ['beach', 'building_museum', 'building_stadium', 'cave_entrance', 'conference_centre', 'lighthouse', 'marina', 'museum', 'peak', 'pier', 'planetarium', 'stadium', 'theatre'],
-    "premium": ['building_hotel', 'building_stadium', 'country_club', 'golf_course', 'hotel', 'mall', 'marina', 'resort', 'stadium'],
-    "essential": ['fire_station', 'hospital', 'police', 'supermarket'],
-    "employment": ['research_institute'],
-    "civic": ['building_fire_station', 'building_government', 'building_police', 'courthouse', 'embassy', 'fire_station', 'office_diplomatic', 'police', 'townhall'],
+    "healthcare": ["building_hospital", "hospital"],
+    "education": [
+        "building_college",
+        "building_school",
+        "building_university",
+        "college",
+        "research_institute",
+        "school",
+        "university",
+    ],
+    "finance": ["building_bank"],
+    "shopping": ["department_store", "mall", "supermarket"],
+    "food": ["food_court", "restaurant", "steak_house", "sushi", "bistro", "seafood"],
+    "transport": [
+        "aerodrome",
+        "building_train_station",
+        "building_transportation",
+        "bus_station",
+        "cable_car",
+        "chair_lift",
+        "dock",
+        "gondola",
+        "helipad",
+        "heliport",
+        "public_transport_ferry_terminal",
+        "public_transport_station",
+        "railway_light_rail",
+        "railway_monorail",
+        "railway_station",
+        "railway_subway",
+        "railway_subway_entrance",
+        "services",
+        "station",
+        "terminal",
+    ],
+    "cultural": [
+        "beach",
+        "building_museum",
+        "building_stadium",
+        "cave_entrance",
+        "conference_centre",
+        "lighthouse",
+        "marina",
+        "museum",
+        "peak",
+        "pier",
+        "planetarium",
+        "stadium",
+        "theatre",
+    ],
+    "premium": [
+        "building_hotel",
+        "building_stadium",
+        "country_club",
+        "golf_course",
+        "hotel",
+        "mall",
+        "marina",
+        "resort",
+        "stadium",
+    ],
+    "essential": ["fire_station", "hospital", "police", "supermarket"],
+    "employment": ["research_institute"],
+    "civic": [
+        "building_fire_station",
+        "building_government",
+        "building_police",
+        "courthouse",
+        "embassy",
+        "fire_station",
+        "office_diplomatic",
+        "police",
+        "townhall",
+    ],
 }
 
 BASIC_POIS = {
-    "healthcare": ['ayurvedic', 'blood_bank', 'chemist', 'clinic', 'dentist', 'doctors', 'health_centre', 'homeopathy', 'laboratory', 'medical', 'nursing_home', 'optician', 'pharmacy', 'physiotherapist', 'unani', 'veterinary'],
-    "education": ['coaching', 'driving_school', 'kindergarten', 'language_school', 'library', 'music_school', 'prep_school', 'training'],
-    "finance": ['accountant', 'atm', 'bank', 'bureau_de_change', 'financial_advice', 'insurance', 'money_transfer', 'office_accountant', 'office_financial', 'office_insurance', 'post_box', 'post_office', 'tax_advisor'],
-    "shopping": ['alcohol', 'antiques', 'art', 'baby_goods', 'bag', 'bakery', 'bathroom_furnishing', 'beauty', 'bed', 'beverages', 'bicycle', 'books', 'building_kiosk', 'building_retail', 'butcher', 'camera', 'car', 'car_parts', 'car_repair', 'carpet', 'chemist', 'chocolate', 'clothes', 'coffee', 'computer', 'confectionery', 'convenience', 'copyshop', 'cosmetics', 'craft', 'curtain', 'deli', 'doityourself', 'dry_cleaning', 'e-cigarette', 'electronics', 'fabric', 'fashion', 'fishing', 'florist', 'furniture', 'garden_centre', 'gas', 'general', 'gift', 'greengrocer', 'hairdresser', 'hardware', 'houseware', 'hunting', 'interior_decoration', 'jewellery', 'jewelry', 'kirana', 'kitchen', 'laundry', 'lighting', 'lottery', 'marketplace', 'medical_supply', 'mobile_phone', 'motorcycle', 'music', 'musical_instrument', 'newsagent', 'optician', 'outdoor', 'paint', 'perfumery', 'pet', 'photo', 'seafood', 'shoes', 'shop', 'sports', 'stationery', 'tea', 'ticket', 'tobacco', 'toys', 'trade', 'travel_agency', 'tyres', 'vape', 'variety_store', 'video_games', 'watches', 'wholesale', 'wool'],
-    "food": ['bar', 'biergarten', 'bistro', 'burger', 'cafe', 'canteen', 'chicken', 'chinese', 'coffee_shop', 'fast_food', 'food_court', 'ice_cream', 'indian', 'internet_cafe', 'italian', 'kebab', 'noodle', 'pasta', 'pizza', 'pub', 'restaurant', 'sandwich', 'seafood', 'steak_house', 'sushi', 'tea'],
-    "transport": ['bicycle_parking', 'bicycle_rental', 'boatyard', 'building_parking', 'bus_stop', 'car_rental', 'car_sharing', 'car_wash', 'charging_station', 'dam', 'elevator', 'ferry_terminal', 'fuel', 'gate', 'motorcycle_parking', 'parking', 'parking_entrance', 'parking_space', 'public_transport_platform', 'public_transport_stop_position', 'railway_halt', 'railway_platform', 'railway_stop', 'railway_tram_stop', 'rest_area', 'taxi'],
-    "cultural": ['arts_centre', 'artwork', 'attraction', 'building_cathedral', 'building_chapel', 'building_church', 'building_cinema', 'building_grandstand', 'building_mosque', 'building_temple', 'cinema', 'clock', 'community_centre', 'events_venue', 'exhibition_centre', 'fishing', 'fitness_centre', 'fountain', 'gallery', 'garden', 'library', 'memorial', 'monastery', 'monument', 'nature_reserve', 'park', 'pitch', 'place_of_worship', 'playground', 'scrub', 'slipway', 'social_centre', 'sports_centre', 'spring', 'studio', 'swimming_pool', 'tower', 'track', 'viewpoint', 'water', 'water_tower', 'wayside_shrine', 'windmill', 'wood'],
-    "premium": ['building_hostel', 'casino', 'fitness_centre', 'gym', 'nightclub', 'sauna', 'spa', 'sports_centre', 'swimming_pool'],
-    "essential": ['atm', 'bank', 'clinic', 'convenience', 'dentist', 'doctors', 'drinking_water', 'fuel', 'grocery', 'payment_terminal', 'pharmacy', 'post_office', 'telephone', 'toilets', 'vending_machine'],
-    "employment": ['building_commercial', 'building_industrial', 'building_office', 'building_retail', 'carpenter', 'coworking_space', 'craft', 'electrician', 'electronics_repair', 'factory', 'industrial', 'key_cutter', 'office', 'office_accountant', 'office_advertising_agency', 'office_architect', 'office_company', 'office_consulting', 'office_coworking', 'office_educational_institution', 'office_employment_agency', 'office_estate_agent', 'office_financial', 'office_government', 'office_insurance', 'office_it', 'office_lawyer', 'office_logistics', 'office_newspaper', 'office_ngo', 'office_notary', 'office_political_party', 'office_research', 'office_telecommunication', 'office_travel_agent', 'office_yes', 'photographer', 'plumber', 'research', 'shoemaker', 'tailor', 'warehouse', 'workshop'],
-    "civic": ['building_community_centre', 'building_public', 'community_centre', 'office_association', 'office_foundation', 'office_government', 'office_ngo', 'office_political_party', 'office_religion', 'post_office', 'public_building', 'recycling', 'social_facility'],
+    "healthcare": [
+        "ayurvedic",
+        "blood_bank",
+        "chemist",
+        "clinic",
+        "dentist",
+        "doctors",
+        "health_centre",
+        "homeopathy",
+        "laboratory",
+        "medical",
+        "nursing_home",
+        "optician",
+        "pharmacy",
+        "physiotherapist",
+        "unani",
+        "veterinary",
+    ],
+    "education": [
+        "coaching",
+        "driving_school",
+        "kindergarten",
+        "language_school",
+        "library",
+        "music_school",
+        "prep_school",
+        "training",
+    ],
+    "finance": [
+        "accountant",
+        "atm",
+        "bank",
+        "bureau_de_change",
+        "financial_advice",
+        "insurance",
+        "money_transfer",
+        "office_accountant",
+        "office_financial",
+        "office_insurance",
+        "post_box",
+        "post_office",
+        "tax_advisor",
+    ],
+    "shopping": [
+        "alcohol",
+        "antiques",
+        "art",
+        "baby_goods",
+        "bag",
+        "bakery",
+        "bathroom_furnishing",
+        "beauty",
+        "bed",
+        "beverages",
+        "bicycle",
+        "books",
+        "building_kiosk",
+        "building_retail",
+        "butcher",
+        "camera",
+        "car",
+        "car_parts",
+        "car_repair",
+        "carpet",
+        "chemist",
+        "chocolate",
+        "clothes",
+        "coffee",
+        "computer",
+        "confectionery",
+        "convenience",
+        "copyshop",
+        "cosmetics",
+        "craft",
+        "curtain",
+        "deli",
+        "doityourself",
+        "dry_cleaning",
+        "e-cigarette",
+        "electronics",
+        "fabric",
+        "fashion",
+        "fishing",
+        "florist",
+        "furniture",
+        "garden_centre",
+        "gas",
+        "general",
+        "gift",
+        "greengrocer",
+        "hairdresser",
+        "hardware",
+        "houseware",
+        "hunting",
+        "interior_decoration",
+        "jewellery",
+        "jewelry",
+        "kirana",
+        "kitchen",
+        "laundry",
+        "lighting",
+        "lottery",
+        "marketplace",
+        "medical_supply",
+        "mobile_phone",
+        "motorcycle",
+        "music",
+        "musical_instrument",
+        "newsagent",
+        "optician",
+        "outdoor",
+        "paint",
+        "perfumery",
+        "pet",
+        "photo",
+        "seafood",
+        "shoes",
+        "shop",
+        "sports",
+        "stationery",
+        "tea",
+        "ticket",
+        "tobacco",
+        "toys",
+        "trade",
+        "travel_agency",
+        "tyres",
+        "vape",
+        "variety_store",
+        "video_games",
+        "watches",
+        "wholesale",
+        "wool",
+    ],
+    "food": [
+        "bar",
+        "biergarten",
+        "bistro",
+        "burger",
+        "cafe",
+        "canteen",
+        "chicken",
+        "chinese",
+        "coffee_shop",
+        "fast_food",
+        "food_court",
+        "ice_cream",
+        "indian",
+        "internet_cafe",
+        "italian",
+        "kebab",
+        "noodle",
+        "pasta",
+        "pizza",
+        "pub",
+        "restaurant",
+        "sandwich",
+        "seafood",
+        "steak_house",
+        "sushi",
+        "tea",
+    ],
+    "transport": [
+        "bicycle_parking",
+        "bicycle_rental",
+        "boatyard",
+        "building_parking",
+        "bus_stop",
+        "car_rental",
+        "car_sharing",
+        "car_wash",
+        "charging_station",
+        "dam",
+        "elevator",
+        "ferry_terminal",
+        "fuel",
+        "gate",
+        "motorcycle_parking",
+        "parking",
+        "parking_entrance",
+        "parking_space",
+        "public_transport_platform",
+        "public_transport_stop_position",
+        "railway_halt",
+        "railway_platform",
+        "railway_stop",
+        "railway_tram_stop",
+        "rest_area",
+        "taxi",
+    ],
+    "cultural": [
+        "arts_centre",
+        "artwork",
+        "attraction",
+        "building_cathedral",
+        "building_chapel",
+        "building_church",
+        "building_cinema",
+        "building_grandstand",
+        "building_mosque",
+        "building_temple",
+        "cinema",
+        "clock",
+        "community_centre",
+        "events_venue",
+        "exhibition_centre",
+        "fishing",
+        "fitness_centre",
+        "fountain",
+        "gallery",
+        "garden",
+        "library",
+        "memorial",
+        "monastery",
+        "monument",
+        "nature_reserve",
+        "park",
+        "pitch",
+        "place_of_worship",
+        "playground",
+        "scrub",
+        "slipway",
+        "social_centre",
+        "sports_centre",
+        "spring",
+        "studio",
+        "swimming_pool",
+        "tower",
+        "track",
+        "viewpoint",
+        "water",
+        "water_tower",
+        "wayside_shrine",
+        "windmill",
+        "wood",
+    ],
+    "premium": [
+        "building_hostel",
+        "casino",
+        "fitness_centre",
+        "gym",
+        "nightclub",
+        "sauna",
+        "spa",
+        "sports_centre",
+        "swimming_pool",
+    ],
+    "essential": [
+        "atm",
+        "bank",
+        "clinic",
+        "convenience",
+        "dentist",
+        "doctors",
+        "drinking_water",
+        "fuel",
+        "grocery",
+        "payment_terminal",
+        "pharmacy",
+        "post_office",
+        "telephone",
+        "toilets",
+        "vending_machine",
+    ],
+    "employment": [
+        "building_commercial",
+        "building_industrial",
+        "building_office",
+        "building_retail",
+        "carpenter",
+        "coworking_space",
+        "craft",
+        "electrician",
+        "electronics_repair",
+        "factory",
+        "industrial",
+        "key_cutter",
+        "office",
+        "office_accountant",
+        "office_advertising_agency",
+        "office_architect",
+        "office_company",
+        "office_consulting",
+        "office_coworking",
+        "office_educational_institution",
+        "office_employment_agency",
+        "office_estate_agent",
+        "office_financial",
+        "office_government",
+        "office_insurance",
+        "office_it",
+        "office_lawyer",
+        "office_logistics",
+        "office_newspaper",
+        "office_ngo",
+        "office_notary",
+        "office_political_party",
+        "office_research",
+        "office_telecommunication",
+        "office_travel_agent",
+        "office_yes",
+        "photographer",
+        "plumber",
+        "research",
+        "shoemaker",
+        "tailor",
+        "warehouse",
+        "workshop",
+    ],
+    "civic": [
+        "building_community_centre",
+        "building_public",
+        "community_centre",
+        "office_association",
+        "office_foundation",
+        "office_government",
+        "office_ngo",
+        "office_political_party",
+        "office_religion",
+        "post_office",
+        "public_building",
+        "recycling",
+        "social_facility",
+    ],
 }

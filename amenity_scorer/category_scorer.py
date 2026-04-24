@@ -14,9 +14,8 @@ import logging
 from collections import Counter
 from typing import Dict, List, Tuple
 
-import numpy as np
-
 import config
+import numpy as np
 from utils import safe_divide
 
 logger = logging.getLogger(__name__)
@@ -39,14 +38,10 @@ class CategoryScorer:
     """
 
     def __init__(self):
-        self.categories    = config.CATEGORIES
-        self.poi_weights   = config.POI_WEIGHTS
+        self.categories = config.CATEGORIES
+        self.poi_weights = config.POI_WEIGHTS
         self.density_thresholds = config.DENSITY_THRESHOLDS
-        self.component_weights  = config.COMPONENT_WEIGHTS
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        self.component_weights = config.COMPONENT_WEIGHTS
 
     def score(self, category: str, features: Dict, pois: List[Dict]) -> Dict:
         """
@@ -67,17 +62,16 @@ class CategoryScorer:
         cat_pois = [p for p in pois if p.get("poi_type") in self.categories[category]]
 
         components = {
-            "density":       self._density(cat_pois, category),
-            "proximity":     self._proximity(cat_pois, category),
-            "quality":       self._quality(cat_pois, category),
+            "density": self._density(cat_pois, category),
+            "proximity": self._proximity(cat_pois, category),
+            "quality": self._quality(cat_pois, category),
             "accessibility": self._accessibility(cat_pois, category),
-            "spatial":       self._spatial(cat_pois, category, features),
-            "economic":      self._economic(cat_pois, pois, category),
+            "spatial": self._spatial(cat_pois, category, features),
+            "economic": self._economic(cat_pois, pois, category),
         }
 
         raw_score = sum(
-            components[c] * self.component_weights.get(c, 0)
-            for c in components
+            components[c] * self.component_weights.get(c, 0) for c in components
         )
 
         # Soft dominance penalty: only for large, diverse categories
@@ -94,13 +88,9 @@ class CategoryScorer:
                     raw_score *= 1.0 - (max_share - 0.5) * _DOMINANCE_PENALTY_MULTIPLIER
 
         return {
-            "score":      round(float(np.clip(raw_score, 0, 100)), 2),
+            "score": round(float(np.clip(raw_score, 0, 100)), 2),
             "components": {k: round(float(v), 2) for k, v in components.items()},
         }
-
-    # ------------------------------------------------------------------
-    # Component 1 — Density (25%)
-    # ------------------------------------------------------------------
 
     def _density(self, cat_pois: List[Dict], category: str) -> float:
         """
@@ -114,25 +104,20 @@ class CategoryScorer:
         # 500m (50%) -> Walkable / Immediate
         # 1km  (30%) -> Neighborhood / Short Drive
         # 2km  (20%) -> Catchment / Regional
-        
+
         radii_weights = [(0.5, 0.5), (1.0, 0.3), (2.0, 0.2)]
         final_score = 0.0
-        
+
         benchmark = self.density_thresholds.get(category, 2.0)  # POIs/km²
 
         for r_km, weight in radii_weights:
-            # count POIs within this radius — defensive .get() for robustness
             count = sum(1 for p in cat_pois if p.get("distance_km", 9999) <= r_km)
-            
-            # area of this specific radius
-            area_km2 = np.pi * r_km ** 2
-            
-            # benchmark for this specific area
-            good      = max(1, benchmark * area_km2)
+            area_km2 = np.pi * r_km**2
+
+            good = max(1, benchmark * area_km2)
             excellent = good * 2.5
-            fair      = good * 0.4
-            
-            # Score this radius (0-100)
+            fair = good * 0.4
+
             if count == 0:
                 r_score = 0.0
             elif count >= excellent:
@@ -143,14 +128,10 @@ class CategoryScorer:
                 r_score = 40.0 + 30.0 * (count - fair) / (good - fair)
             else:
                 r_score = max(0.0, 40.0 * count / max(fair, 1))
-            
+
             final_score += r_score * weight
 
         return final_score
-
-    # ------------------------------------------------------------------
-    # Component 2 — Proximity (20%)
-    # ------------------------------------------------------------------
 
     def _proximity(self, cat_pois: List[Dict], category: str) -> float:
         """
@@ -173,10 +154,6 @@ class CategoryScorer:
         s_avg = 100.0 * np.exp(-(decay / 1.5) * avg_km)  # softer decay for average
         return float(0.70 * s_min + 0.30 * s_avg)
 
-    # ------------------------------------------------------------------
-    # Component 3 — Quality (20%)
-    # ------------------------------------------------------------------
-
     # Premium and basic POI types per category (Centralized in config)
     _PREMIUM = config.PREMIUM_POIS
     _BASIC = config.BASIC_POIS
@@ -191,9 +168,9 @@ class CategoryScorer:
             return 0.0
 
         premium_types = self._PREMIUM.get(category, [])
-        basic_types   = self._BASIC.get(category, [])
+        basic_types = self._BASIC.get(category, [])
         premium = sum(1 for p in cat_pois if p.get("poi_type") in premium_types)
-        basic   = sum(1 for p in cat_pois if p.get("poi_type") in basic_types)
+        basic = sum(1 for p in cat_pois if p.get("poi_type") in basic_types)
 
         if premium == 0 and basic == 0:
             return 0.0
@@ -203,8 +180,10 @@ class CategoryScorer:
             return 0.0
 
         premium_ratio = safe_divide(premium, relevant_total)
-        basic_ratio   = safe_divide(basic, relevant_total)
-        raw = float(np.clip(premium_ratio * 100 * 1.5 + basic_ratio * 100 * 0.5, 0, 100))
+        basic_ratio = safe_divide(basic, relevant_total)
+        raw = float(
+            np.clip(premium_ratio * 100 * 1.5 + basic_ratio * 100 * 0.5, 0, 100)
+        )
 
         # Scale down when we have too few POIs for a reliable ratio.
         # 1 POI → 33%, 2 POIs → 66%, >=3 POIs → full score.
@@ -213,10 +192,6 @@ class CategoryScorer:
             raw *= relevant_total / 3.0
 
         return raw
-
-    # ------------------------------------------------------------------
-    # Component 4 — Accessibility (15%)
-    # ------------------------------------------------------------------
 
     def _accessibility(self, cat_pois: List[Dict], category: str) -> float:
         """Gravity-model score: Σ weight / distance².
@@ -230,14 +205,11 @@ class CategoryScorer:
             return 0.0
         weights = self.poi_weights.get(category, {})
         score = sum(
-            weights.get(p.get("poi_type", ""), 1.0) / max(p.get("distance_km", 9999), 0.1) ** 2
+            weights.get(p.get("poi_type", ""), 1.0)
+            / max(p.get("distance_km", 9999), 0.1) ** 2
             for p in cat_pois
         )
         return float(np.clip(score / 100.0 * 100, 0, 100))
-
-    # ------------------------------------------------------------------
-    # Component 5 — Spatial (10%)
-    # ------------------------------------------------------------------
 
     def _spatial(self, cat_pois: List[Dict], category: str, features: Dict) -> float:
         """
@@ -262,9 +234,9 @@ class CategoryScorer:
             # Optimal walkable range 0.5–1.0 scores 100.
             # Score drops for over-clustering (NNI < 0.5) or sprawl (NNI > 1.0).
             if nni < 0.5:
-                nni_score = 50.0 + (nni / 0.5) * 50.0      # 0→50, 0.5→100
+                nni_score = 50.0 + (nni / 0.5) * 50.0  # 0→50, 0.5→100
             elif nni <= 1.0:
-                nni_score = 100.0                            # optimal range
+                nni_score = 100.0  # optimal range
             elif nni <= 1.5:
                 nni_score = 100.0 - ((nni - 1.0) / 0.5) * 50.0  # 1.0→100, 1.5→50
             else:
@@ -282,11 +254,9 @@ class CategoryScorer:
             logger.debug(f"Spatial component fallback for {category}: {exc}")
             return 0.0
 
-    # ------------------------------------------------------------------
-    # Component 6 — Economic (10%)
-    # ------------------------------------------------------------------
-
-    def _economic(self, cat_pois: List[Dict], all_pois: List[Dict], category: str) -> float:
+    def _economic(
+        self, cat_pois: List[Dict], all_pois: List[Dict], category: str
+    ) -> float:
         """
         Category share of total POIs vs India-calibrated target.
 
@@ -310,7 +280,7 @@ class CategoryScorer:
 
         category_pct = safe_divide(len(cat_pois) * 100, len(all_pois))
         target = config.ECONOMIC_TARGET_PCT.get(category, 10)
-        ratio  = safe_divide(category_pct, target)
+        ratio = safe_divide(category_pct, target)
 
         raw = float(np.clip(100 / (1 + np.exp(-4.0 * (ratio - 1.0))), 0, 100))
         return raw * confidence

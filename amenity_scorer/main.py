@@ -26,42 +26,50 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-import pandas as pd
-from tqdm import tqdm
+# Force UTF-8 output on Windows to prevent UnicodeEncodeError
+# when printing addresses or POI names with non-ASCII characters.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import config
+import pandas as pd
 from amenity_calculator import AmenityCalculator
 from category_scorer import CategoryScorer
 from feature_extractor import FeatureExtractor
 from poi_fetcher import POIFetcher
+from tqdm import tqdm
 from utils import setup_logging
 
 logger = setup_logging()
 
-_LAT_MIN, _LAT_MAX = 6.5, 35.5
-_LON_MIN, _LON_MAX = 68.0, 97.5
+_LAT_MIN, _LAT_MAX = (
+    6.0,
+    37.0,
+)  # Slightly wider than admin bounds to cover border pincodes
+_LON_MIN, _LON_MAX = 67.0, 98.0  # Covers Andaman & Nicobar + Lakshadweep
 
-# CSV columns written per row
 _BASE_COLS = [
-    "address", "latitude", "longitude", "amenity_index", "classification",
-    "data_quality", "total_pois", "processing_time_s",
+    "address",
+    "latitude",
+    "longitude",
+    "amenity_index",
+    "classification",
+    "data_quality",
+    "total_pois",
+    "processing_time_s",
 ]
 _CAT_COLS = [f"{c}_score" for c in config.CATEGORY_WEIGHTS]
-_ALL_COLS  = _BASE_COLS + _CAT_COLS
+_ALL_COLS = _BASE_COLS + _CAT_COLS
 
-
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
 
 class AmenityPipeline:
     """End-to-end pipeline: fetch POIs → extract features → score → index."""
 
     def __init__(self):
         self.poi_fetcher = POIFetcher(logger)
-        self.extractor   = FeatureExtractor()
-        self.scorer      = CategoryScorer()
-        self.calculator  = AmenityCalculator()
+        self.extractor = FeatureExtractor()
+        self.scorer = CategoryScorer()
+        self.calculator = AmenityCalculator()
         logger.info("AmenityPipeline initialised (v%s)", config.VERSION)
 
     def process(self, lat: float, lon: float) -> Dict:
@@ -77,8 +85,12 @@ class AmenityPipeline:
                 pois = []
 
             if len(pois) < 10:
-                logger.warning("Only %d POIs at (%.4f, %.4f) - data quality may be poor",
-                               len(pois), lat, lon)
+                logger.warning(
+                    "Only %d POIs at (%.4f, %.4f) - data quality may be poor",
+                    len(pois),
+                    lat,
+                    lon,
+                )
 
             try:
                 features = self.extractor.extract_all(lat, lon, pois)
@@ -101,21 +113,24 @@ class AmenityPipeline:
             except Exception as exc:
                 logger.error("Index calculation failed: %s", exc)
                 index = {
-                    "amenity_index": 0.0, "classification": "Error",
-                    "data_quality": "Error", "penalties": {}, "weighted_score": 0.0,
+                    "amenity_index": 0.0,
+                    "classification": "Error",
+                    "data_quality": "Error",
+                    "penalties": {},
+                    "weighted_score": 0.0,
                 }
 
             elapsed = round(time.time() - start, 3)
             return {
-                "location":        {"latitude": lat, "longitude": lon},
-                "amenity_index":   index,
+                "location": {"latitude": lat, "longitude": lon},
+                "amenity_index": index,
                 "category_scores": category_scores,
-                "features":        features,
+                "features": features,
                 "metadata": {
                     "processing_time_s": elapsed,
-                    "total_pois":        len(pois),
-                    "num_features":      len(features),
-                    "status":            "success",
+                    "total_pois": len(pois),
+                    "num_features": len(features),
+                    "status": "success",
                 },
             }
 
@@ -139,42 +154,68 @@ class AmenityPipeline:
 
         Supports resume: rows already in the CSV are skipped.
         """
-        csv_path   = Path(output_stem + ".csv")
+        csv_path = Path(output_stem + ".csv")
         jsonl_path = Path(output_stem + ".jsonl")
-        json_path  = Path(output_stem + ".json")
+        json_path = Path(output_stem + ".json")
 
-        # Load input
+        # Load input — use vectorised access, not iterrows (much faster for large CSVs)
         df = pd.read_csv(input_file)
-        lat_col  = next((c for c in df.columns if "lat" in c.lower()), None)
-        lon_col  = next((c for c in df.columns if "lon" in c.lower()), None)
-        addr_col = next((c for c in df.columns if "addr" in c.lower() or c.lower() == "address"), None)
+        lat_col = next((c for c in df.columns if "lat" in c.lower()), None)
+        lon_col = next((c for c in df.columns if "lon" in c.lower()), None)
+        addr_col = next(
+            (
+                c
+                for c in df.columns
+                if "addr" in c.lower()
+                or c.lower() == "address"
+                or "pincode" in c.lower()
+                or c.lower() == "pin"
+            ),
+            None,
+        )
         if not lat_col or not lon_col:
             raise ValueError("Cannot find latitude/longitude columns in input CSV")
 
-        all_locations: List[Tuple[float, float, str]] = [
-            (float(row[lat_col]), float(row[lon_col]),
-             str(row.get(addr_col, "")) if addr_col else "")
-            for _, row in df.iterrows()
-        ]
+        # Drop rows with missing or non-numeric coordinates
+        df[lat_col] = pd.to_numeric(df[lat_col], errors="coerce")
+        df[lon_col] = pd.to_numeric(df[lon_col], errors="coerce")
+        n_before = len(df)
+        df = df.dropna(subset=[lat_col, lon_col])
+        n_dropped = n_before - len(df)
+        if n_dropped:
+            logger.warning("Dropped %d rows with missing/invalid coordinates", n_dropped)
+
+        lats  = df[lat_col].tolist()
+        lons  = df[lon_col].tolist()
+        addrs = df[addr_col].fillna("").astype(str).tolist() if addr_col else [""] * len(df)
+
+        all_locations: List[Tuple[float, float, str]] = list(zip(lats, lons, addrs))
         if limit:
             all_locations = all_locations[:limit]
+
 
         # Resume: find already-processed coordinates
         processed = _load_processed_set(csv_path)
         locations = [
-            (lat, lon, addr) for lat, lon, addr in all_locations
+            (lat, lon, addr)
+            for lat, lon, addr in all_locations
             if (round(lat, 6), round(lon, 6)) not in processed
         ]
 
         if not locations:
-            logger.info("All %d locations already processed. Nothing to do.", len(all_locations))
+            logger.info(
+                "All %d locations already processed. Nothing to do.", len(all_locations)
+            )
             return
 
         logger.info(
             "Processing %d/%d locations (skipped %d already done) | "
             "mode=%s workers=%d",
-            len(locations), len(all_locations), len(processed),
-            "parallel" if parallel else "sequential", n_workers,
+            len(locations),
+            len(all_locations),
+            len(processed),
+            "parallel" if parallel else "sequential",
+            n_workers,
         )
 
         # Initialise CSV header if new file
@@ -191,8 +232,12 @@ class AmenityPipeline:
             all_results.append(result)
             _print_live(result)
 
-        with tqdm(total=len(locations), desc="Scoring", unit="loc",
-                  bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]") as pbar:
+        with tqdm(
+            total=len(locations),
+            desc="Scoring",
+            unit="loc",
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+        ) as pbar:
 
             if parallel and n_workers > 1:
                 with ThreadPoolExecutor(max_workers=min(n_workers, 8)) as pool:
@@ -217,30 +262,31 @@ class AmenityPipeline:
         logger.info(
             "Batch complete. %d locations processed.\n"
             "  CSV   -> %s\n  JSONL -> %s\n  JSON  -> %s",
-            len(all_results), csv_path, jsonl_path, json_path,
+            len(all_results),
+            csv_path,
+            jsonl_path,
+            json_path,
         )
 
-
-# ---------------------------------------------------------------------------
-# Output helpers
-# ---------------------------------------------------------------------------
 
 def _append_csv(result: Dict, path: Path) -> None:
     """Append one result row to CSV immediately (live)."""
     try:
         loc = result["location"]
         row = {
-            "address":           loc.get("address", ""),
-            "latitude":          loc["latitude"],
-            "longitude":         loc["longitude"],
-            "amenity_index":     result["amenity_index"]["amenity_index"],
-            "classification":    result["amenity_index"]["classification"],
-            "data_quality":      result["amenity_index"].get("data_quality", ""),
-            "total_pois":        result["metadata"]["total_pois"],
+            "address": loc.get("address", ""),
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+            "amenity_index": result["amenity_index"]["amenity_index"],
+            "classification": result["amenity_index"]["classification"],
+            "data_quality": result["amenity_index"].get("data_quality", ""),
+            "total_pois": result["metadata"]["total_pois"],
             "processing_time_s": result["metadata"]["processing_time_s"],
         }
         for cat in config.CATEGORY_WEIGHTS:
-            row[f"{cat}_score"] = result["category_scores"].get(cat, {}).get("score", 0.0)
+            row[f"{cat}_score"] = (
+                result["category_scores"].get(cat, {}).get("score", 0.0)
+            )
 
         pd.DataFrame([row]).reindex(columns=_ALL_COLS, fill_value=0.0).to_csv(
             path, mode="a", header=False, index=False
@@ -254,11 +300,13 @@ def _append_jsonl(result: Dict, path: Path) -> None:
     try:
         loc = result["location"]
         slim = {
-            "address":         loc.get("address", ""),
-            "location":        {"latitude": loc["latitude"], "longitude": loc["longitude"]},
-            "amenity_index":   result["amenity_index"],
-            "category_scores": result["category_scores"],  # Full dict including components
-            "metadata":        result["metadata"],
+            "address": loc.get("address", ""),
+            "location": {"latitude": loc["latitude"], "longitude": loc["longitude"]},
+            "amenity_index": result["amenity_index"],
+            "category_scores": result[
+                "category_scores"
+            ],  # Full dict including components
+            "metadata": result["metadata"],
         }
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(slim, ensure_ascii=False) + "\n")
@@ -271,12 +319,16 @@ def _write_json(results: List[Dict], path: Path) -> None:
     try:
         slim_results = [
             {
-                "address":         r["location"].get("address", ""),
-                "location":        {"latitude": r["location"]["latitude"],
-                                    "longitude": r["location"]["longitude"]},
-                "amenity_index":   r["amenity_index"],
-                "category_scores": r["category_scores"],  # Full dict including components
-                "metadata":        r["metadata"],
+                "address": r["location"].get("address", ""),
+                "location": {
+                    "latitude": r["location"]["latitude"],
+                    "longitude": r["location"]["longitude"],
+                },
+                "amenity_index": r["amenity_index"],
+                "category_scores": r[
+                    "category_scores"
+                ],  # Full dict including components
+                "metadata": r["metadata"],
             }
             for r in results
         ]
@@ -290,14 +342,14 @@ def _write_json(results: List[Dict], path: Path) -> None:
 
 def _print_live(result: Dict) -> None:
     """Print a one-line live score to the terminal."""
-    loc   = result["location"]
-    idx   = result["amenity_index"]
-    meta  = result["metadata"]
-    addr  = loc.get("address", f"{loc['latitude']:.4f},{loc['longitude']:.4f}")
+    loc = result["location"]
+    idx = result["amenity_index"]
+    meta = result["metadata"]
+    addr = loc.get("address", f"{loc['latitude']:.4f},{loc['longitude']:.4f}")
     score = idx.get("amenity_index", 0.0)
-    cls   = idx.get("classification", "?").ljust(6)
-    pois  = meta.get("total_pois", 0)
-    t     = meta.get("processing_time_s", 0.0)
+    cls = idx.get("classification", "?").ljust(6)
+    pois = meta.get("total_pois", 0)
+    t = meta.get("processing_time_s", 0.0)
     tqdm.write(
         f"  {addr[:50]:<50} | Score: {score:5.1f} | {cls} | POIs: {pois:4d} | {t:.1f}s"
     )
@@ -323,26 +375,25 @@ def _validate_coords(lat: float, lon: float) -> None:
 
 def _error_result(lat: float, lon: float, exc: Exception, elapsed: float) -> Dict:
     return {
-        "location":        {"latitude": lat, "longitude": lon},
-        "amenity_index":   {
-            "amenity_index": 0.0, "classification": "Error",
-            "data_quality": "Error", "penalties": {}, "weighted_score": 0.0,
+        "location": {"latitude": lat, "longitude": lon},
+        "amenity_index": {
+            "amenity_index": 0.0,
+            "classification": "Error",
+            "data_quality": "Error",
+            "penalties": {},
+            "weighted_score": 0.0,
         },
         "category_scores": {},
-        "features":        {},
+        "features": {},
         "metadata": {
             "processing_time_s": round(elapsed, 3),
-            "total_pois":        0,
-            "num_features":      0,
-            "status":            "error",
-            "error":             str(exc),
+            "total_pois": 0,
+            "num_features": 0,
+            "status": "error",
+            "error": str(exc),
         },
     }
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -351,24 +402,33 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=__doc__,
     )
     mode = p.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--lat",   type=float, help="Latitude  (single-location mode)")
+    mode.add_argument("--lat", type=float, help="Latitude  (single-location mode)")
     mode.add_argument("--input", metavar="CSV", help="Input CSV file (batch mode)")
 
-    p.add_argument("--lon",        type=float, help="Longitude (required with --lat)")
-    p.add_argument("--output",     metavar="STEM",
-                   help="Output file stem (batch mode). Produces STEM.csv, STEM.jsonl, STEM.json")
-    p.add_argument("--limit",      type=int, default=None,
-                   help="Process only the first N rows (default: all)")
-    p.add_argument("--workers",    type=int, default=4,
-                   help="Parallel workers for batch (default: 4)")
-    p.add_argument("--sequential", action="store_true",
-                   help="Disable parallel processing")
+    p.add_argument("--lon", type=float, help="Longitude (required with --lat)")
+    p.add_argument(
+        "--output",
+        metavar="STEM",
+        help="Output file stem (batch mode). Produces STEM.csv, STEM.jsonl, STEM.json",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Process only the first N rows (default: all)",
+    )
+    p.add_argument(
+        "--workers", type=int, default=4, help="Parallel workers for batch (default: 4)"
+    )
+    p.add_argument(
+        "--sequential", action="store_true", help="Disable parallel processing"
+    )
     return p
 
 
 def main() -> None:
     parser = _build_parser()
-    args   = parser.parse_args()
+    args = parser.parse_args()
 
     if args.lat is not None and args.lon is None:
         parser.error("--lon is required when using --lat")
@@ -380,7 +440,7 @@ def main() -> None:
     try:
         if args.lat is not None:
             result = pipeline.process(args.lat, args.lon)
-            idx    = result["amenity_index"]
+            idx = result["amenity_index"]
             print(f"\n{'='*62}")
             print(f"  Location   : ({args.lat}, {args.lon})")
             print(f"  Score      : {idx['amenity_index']:.1f} / 100")

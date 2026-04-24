@@ -16,9 +16,8 @@ Classification thresholds (India-calibrated):
 import logging
 from typing import Dict, Optional
 
-import numpy as np
-
 import config
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -61,30 +60,30 @@ class AmenityCalculator:
         """
         features = features or {}
 
-        # ── Zero-POI guard ───────────────────────────────────────────
+        # 1. Zero-POI guard
         # If no POIs were fetched (API failure / truly empty area),
         # return 0 immediately rather than a spurious floor score.
         if total_pois == 0:
             return {
-                "amenity_index":  0.0,
+                "amenity_index": 0.0,
                 "classification": "Rural",
-                "data_quality":   "Zero",
-                "penalties":      {},
+                "data_quality": "Zero",
+                "penalties": {},
                 "weighted_score": 0.0,
             }
 
-        # ── Weighted base score ──────────────────────────────────────
+        # 2. Weighted base score
         weighted = sum(
             category_scores.get(cat, {}).get("score", 0.0) * weight
             for cat, weight in config.CATEGORY_WEIGHTS.items()
         )
 
-        # ── Penalties (additive, capped at 50% total) ────────────────
+        # 3. Penalties (additive, capped at 50% total)
         penalties: Dict[str, float] = {}
 
-        # 1. Data quality
+        # Data quality
         thresholds = config.DATA_QUALITY_POI_THRESHOLDS
-        pen_map    = config.DATA_QUALITY_PENALTIES
+        pen_map = config.DATA_QUALITY_PENALTIES
         if total_pois < thresholds["very_sparse"]:
             penalties["data_quality"] = pen_map["very_sparse"]
         elif total_pois < thresholds["sparse"]:
@@ -94,38 +93,32 @@ class AmenityCalculator:
         else:
             penalties["data_quality"] = 0.0
 
-        # 2. Type Gini — continuous linear penalty: P = G × 0.15
-        # Gini 0 = perfect equality → no penalty; Gini 1 = all POIs one category → 15% penalty
+        # Type Gini — continuous linear penalty: P = G × 0.15
         gini = features.get("global_gini_coefficient", 0.0)
         penalties["type_gini"] = float(np.clip(gini * 0.15, 0.0, 0.15))
 
-        # 3. Simpson's diversity — continuous linear penalty: P = (1−D)×0.10
-        # simpson is on 0–100 scale; (1 − D/100) × 0.10 gives 0–10% penalty
+        # Simpson's diversity — continuous linear penalty: P = (1−D)×0.10
         simpson = features.get("global_simpson_diversity", 100.0)
         penalties["diversity"] = float(np.clip((1 - simpson / 100.0) * 0.10, 0.0, 0.10))
 
-        # 4. Missing essential categories: 3%/missing, cap 9%
+        # Missing essential categories: 3%/missing, cap 9%
         missing = sum(
-            1 for cat in _ESSENTIAL_CATEGORIES
+            1
+            for cat in _ESSENTIAL_CATEGORIES
             if category_scores.get(cat, {}).get("score", 0.0) < _ESSENTIAL_THRESHOLD
         )
         penalties["missing_essentials"] = min(missing * 0.03, 0.09)
 
-        # Cap total penalty at 50%
         total_penalty = min(sum(penalties.values()), 0.50)
         amenity_index = float(np.clip(weighted * (1 - total_penalty), 0, 100))
 
         return {
-            "amenity_index":  round(amenity_index, 2),
+            "amenity_index": round(amenity_index, 2),
             "classification": self._classify(amenity_index),
-            "data_quality":   self._data_quality_label(total_pois),
-            "penalties":      {k: round(v, 4) for k, v in penalties.items()},
+            "data_quality": self._data_quality_label(total_pois),
+            "penalties": {k: round(v, 4) for k, v in penalties.items()},
             "weighted_score": round(weighted, 2),
         }
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _classify(score: float) -> str:
@@ -147,7 +140,3 @@ class AmenityCalculator:
         if total_pois < 40:
             return "Medium"
         return "High"
-
-    # Backwards-compatible alias used by existing main.py
-    def calculate_amenity_index(self, category_scores, total_pois=0, features=None):
-        return self.calculate(category_scores, total_pois=total_pois, features=features)

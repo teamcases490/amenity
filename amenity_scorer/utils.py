@@ -2,18 +2,18 @@
 utils.py — Shared utility functions.
 """
 
-import time
 import hashlib
 import logging
-import numpy as np
+import time
+import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Optional
 
+import numpy as np
 
-# ---------------------------------------------------------------------------
 # Math helpers
-# ---------------------------------------------------------------------------
+
 
 def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
     """Divide two numbers, returning `default` on zero/invalid denominator."""
@@ -57,7 +57,9 @@ def gini_coefficient(values: np.ndarray) -> float:
     sorted_v = np.sort(values)
     n = len(sorted_v)
     idx = np.arange(1, n + 1)
-    return float(max(0.0, (2 * np.sum(idx * sorted_v)) / (n * sorted_v.sum()) - (n + 1) / n))
+    return float(
+        max(0.0, (2 * np.sum(idx * sorted_v)) / (n * sorted_v.sum()) - (n + 1) / n)
+    )
 
 
 def cache_key(lat: float, lon: float, radius_km: float) -> str:
@@ -66,29 +68,31 @@ def cache_key(lat: float, lon: float, radius_km: float) -> str:
     return hashlib.md5(key.encode()).hexdigest()
 
 
-# ---------------------------------------------------------------------------
 # Rate limiter
-# ---------------------------------------------------------------------------
+
 
 class RateLimiter:
-    """Enforces a minimum inter-request interval for API calls."""
+    """Enforces a minimum inter-request interval for API calls (thread-safe)."""
 
     def __init__(self, requests_per_second: float):
         self._interval = 1.0 / requests_per_second
         self._last = 0.0
+        self._lock = threading.Lock()
 
     def wait(self) -> None:
-        elapsed = time.time() - self._last
-        if elapsed < self._interval:
-            time.sleep(self._interval - elapsed)
-        self._last = time.time()
+        with self._lock:
+            elapsed = time.time() - self._last
+            if elapsed < self._interval:
+                time.sleep(self._interval - elapsed)
+            self._last = time.time()
 
 
-# ---------------------------------------------------------------------------
 # Logging
-# ---------------------------------------------------------------------------
 
-def setup_logging(name: str = "amenity_scorer", log_dir: Union[str, Path, None] = None) -> logging.Logger:
+
+def setup_logging(
+    name: str = "amenity_scorer", log_dir: Optional[str | Path] = None
+) -> logging.Logger:
     """
     Configure file + console logging.
 
@@ -98,7 +102,8 @@ def setup_logging(name: str = "amenity_scorer", log_dir: Union[str, Path, None] 
     """
     if log_dir is None:
         try:
-            import config as _cfg  # lazy import to avoid circular deps
+            from . import config as _cfg
+
             log_dir = _cfg.LOG_DIR
         except Exception:
             log_dir = "logs"

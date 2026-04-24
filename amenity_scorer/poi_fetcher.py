@@ -11,6 +11,7 @@ Features:
 import json
 import logging
 import random
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,8 +36,8 @@ class POIFetcher:
 
     OVERPASS_ENDPOINTS = [
         "https://overpass-api.de/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://z.overpass-api.de/api/interpreter",
     ]
 
     def __init__(self, logger_instance: Optional[logging.Logger] = None):
@@ -46,8 +47,15 @@ class POIFetcher:
         self.cache_ttl = timedelta(days=config.CACHE_TTL_DAYS)
         self.rate_limiter = RateLimiter(requests_per_second=config.REQUESTS_PER_SECOND)
         self._endpoint_idx = 0
+        self._endpoint_lock = threading.Lock()
 
-    def fetch(self, lat: float, lon: float, max_radius_km: float = 2.0, force_refresh: bool = False) -> List[Dict]:
+    def fetch(
+        self,
+        lat: float,
+        lon: float,
+        max_radius_km: float = 2.0,
+        force_refresh: bool = False,
+    ) -> List[Dict]:
         """
         Return all POIs within `max_radius_km` of (lat, lon).
 
@@ -55,7 +63,7 @@ class POIFetcher:
         Each POI dict contains at minimum: poi_type, lat, lon, distance_km.
         """
         key = cache_key(lat, lon, max_radius_km)
-        
+
         # Check cache if not forcing refresh
         if not force_refresh:
             cached = self._load_cache(key)
@@ -66,9 +74,6 @@ class POIFetcher:
         # Fetch from API
         pois = self._fetch_from_api(lat, lon, max_radius_km)
 
-        # Always cache — including empty results for genuinely rural areas.
-        # Empty results use a 7-day TTL so they recheck periodically without
-        # hammering the API every call. Full results use the standard 30-day TTL.
         self._save_cache(key, pois, ttl_days=7 if not pois else self.cache_ttl.days)
 
         return pois
@@ -95,8 +100,13 @@ class POIFetcher:
             ttl_days = self.cache_ttl.days
         try:
             path.write_text(
-                json.dumps({"cached_at": datetime.now().isoformat(),
-                            "pois": pois, "ttl_days": ttl_days}),
+                json.dumps(
+                    {
+                        "cached_at": datetime.now().isoformat(),
+                        "pois": pois,
+                        "ttl_days": ttl_days,
+                    }
+                ),
                 encoding="utf-8",
             )
         except Exception as exc:
@@ -108,7 +118,10 @@ class POIFetcher:
         query = self._build_comprehensive_query(lat, lon, radius_m)
 
         for attempt in range(config.API_MAX_RETRIES):
-            endpoint = self.OVERPASS_ENDPOINTS[self._endpoint_idx % len(self.OVERPASS_ENDPOINTS)]
+            with self._endpoint_lock:
+                endpoint = self.OVERPASS_ENDPOINTS[
+                    self._endpoint_idx % len(self.OVERPASS_ENDPOINTS)
+                ]
             try:
                 self.rate_limiter.wait()
                 resp = requests.post(
@@ -117,22 +130,29 @@ class POIFetcher:
                     timeout=config.API_TIMEOUT,
                     headers={"User-Agent": "amenity-scorer/2.1 (research)"},
                 )
-                
-                # Check for HTTP 429 specifically — rotate endpoint AND wait
+
                 if resp.status_code == 429:
-                    wait = 60 + (attempt * 10) + random.uniform(0, 5)
+                    # Short jittered wait — the parallel workers already stagger
+                    # via the RateLimiter, so a long wait here serializes them badly.
+                    wait = 15 + (attempt * 5) + random.uniform(0, 5)
                     self.logger.warning(
                         f"Rate limited (429) on {endpoint}. "
                         f"Rotating endpoint and waiting {wait:.1f}s... (Attempt {attempt+1})"
                     )
-                    self._endpoint_idx += 1  # rotate to next endpoint
+                    with self._endpoint_lock:
+                        self._endpoint_idx += 1
                     time.sleep(wait)
                     continue
 
                 resp.raise_for_status()
-                data = resp.json()
-                
-                # Check for Overpass-specific in-body errors
+                try:
+                    data = resp.json()
+                except Exception:
+                    # Sometimes Overpass returns 200 OK but with an HTML error or empty body
+                    raise requests.exceptions.Timeout(
+                        f"Malformed JSON response from {endpoint}. Possibly internal Overpass timeout or gateway issue."
+                    )
+
                 if "remark" in data:
                     remark = data["remark"]
                     if "timeout" in remark.lower() or "runtime error" in remark.lower():
@@ -141,29 +161,44 @@ class POIFetcher:
 
                 elements = data.get("elements", [])
                 pois = self._parse_elements(elements, lat, lon)
-                
+
                 if not pois:
-                    self.logger.info(f"Fetched 0 POIs at ({lat:.4f}, {lon:.4f}). This may be valid for rural areas.")
+                    self.logger.info(
+                        f"Fetched 0 POIs at ({lat:.4f}, {lon:.4f}). This may be valid for rural areas."
+                    )
                 else:
-                    self.logger.info(f"Fetched {len(pois)} POIs at ({lat:.4f}, {lon:.4f})")
-                
+                    self.logger.info(
+                        f"Fetched {len(pois)} POIs at ({lat:.4f}, {lon:.4f})"
+                    )
+
                 return pois
 
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
-                wait = (2 ** attempt) + random.uniform(1, 3)
-                self.logger.warning(f"Connection/Timeout error: {exc}. Retry {attempt+1}/{config.API_MAX_RETRIES} in {wait:.1f}s")
-                self._endpoint_idx += 1
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+            ) as exc:
+                wait = (2**attempt) + random.uniform(1, 3)
+                self.logger.warning(
+                    f"Connection/Timeout error: {exc}. Retry {attempt+1}/{config.API_MAX_RETRIES} in {wait:.1f}s"
+                )
+                with self._endpoint_lock:
+                    self._endpoint_idx += 1
                 time.sleep(wait)
 
             except requests.exceptions.HTTPError as exc:
                 code = exc.response.status_code
                 if code in [500, 502, 503, 504]:
-                    wait = (2 ** attempt) * 2 + random.uniform(1, 3)
-                    self.logger.warning(f"HTTP {code} (attempt {attempt+1}/{config.API_MAX_RETRIES}), waiting {wait:.1f}s")
+                    wait = (2**attempt) * 2 + random.uniform(1, 3)
+                    self.logger.warning(
+                        f"HTTP {code} (attempt {attempt+1}/{config.API_MAX_RETRIES}), waiting {wait:.1f}s"
+                    )
                     time.sleep(wait)
                 else:
-                    self.logger.error(f"HTTP {code} fatal error: {exc}")
-                    break
+                    # 403, 400, etc. — this endpoint is refusing us; rotate and retry
+                    self.logger.warning(f"HTTP {code} from {endpoint}: rotating endpoint")
+                    with self._endpoint_lock:
+                        self._endpoint_idx += 1
+                    time.sleep(2 + random.uniform(0, 2))
 
             except Exception as exc:
                 self.logger.error(f"Unexpected error: {exc}", exc_info=True)
@@ -172,7 +207,9 @@ class POIFetcher:
         self.logger.error(f"All retries exhausted for ({lat:.4f}, {lon:.4f})")
         return []
 
-    def _build_comprehensive_query(self, lat: float, lon: float, radius_m: float) -> str:
+    def _build_comprehensive_query(
+        self, lat: float, lon: float, radius_m: float
+    ) -> str:
         """
         Build Overpass query with ALL OSM tag types + India-specific tags.
         """
@@ -225,19 +262,19 @@ class POIFetcher:
         """
         return query
 
-    def _parse_elements(self, elements: List[Dict], origin_lat: float, origin_lon: float) -> List[Dict]:
+    def _parse_elements(
+        self, elements: List[Dict], origin_lat: float, origin_lon: float
+    ) -> List[Dict]:
         """Convert raw Overpass elements to normalised POI dicts (deduplicated by ID)."""
         pois = []
         seen_ids = set()
 
         for el in elements:
-            # Deduplicate by OSM ID
             el_id = el.get("id")
             if el_id in seen_ids:
                 continue
             seen_ids.add(el_id)
 
-            # Resolve coordinates (nodes have lat/lon; ways/relations have center)
             lat = el.get("lat") or (el.get("center") or {}).get("lat")
             lon = el.get("lon") or (el.get("center") or {}).get("lon")
             if lat is None or lon is None:
@@ -249,18 +286,20 @@ class POIFetcher:
                 continue
 
             dist = haversine_km(origin_lat, origin_lon, lat, lon)
-            pois.append({
-                "id": el_id,
-                "poi_type": poi_type,
-                "lat": lat,
-                "lon": lon,
-                "distance_km": dist,
-                "name": tags.get("name", ""),
-                "brand": tags.get("brand", ""),
-                "operator": tags.get("operator", ""),
-                "opening_hours": tags.get("opening_hours", ""),
-                "tags": tags  # Keep raw tags for brand/feature extraction
-            })
+            pois.append(
+                {
+                    "id": el_id,
+                    "poi_type": poi_type,
+                    "lat": lat,
+                    "lon": lon,
+                    "distance_km": dist,
+                    "name": tags.get("name", ""),
+                    "brand": tags.get("brand", ""),
+                    "operator": tags.get("operator", ""),
+                    "opening_hours": tags.get("opening_hours", ""),
+                    "tags": tags,
+                }
+            )
         return pois
 
     def _resolve_poi_type(self, tags: Dict) -> str:
@@ -279,9 +318,19 @@ class POIFetcher:
         """
         # Primary tag keys
         primary_keys = [
-            "amenity", "shop", "healthcare", "leisure", "tourism",
-            "sport", "craft", "emergency",
-            "aeroway", "aerialway", "waterway", "natural", "man_made"
+            "amenity",
+            "shop",
+            "healthcare",
+            "leisure",
+            "tourism",
+            "sport",
+            "craft",
+            "emergency",
+            "aeroway",
+            "aerialway",
+            "waterway",
+            "natural",
+            "man_made",
         ]
         for key in primary_keys:
             val = tags.get(key)
@@ -298,7 +347,13 @@ class POIFetcher:
             return f"public_transport_{tags['public_transport']}"
 
         # Highway tags (specific amenity-like infrastructure)
-        if tags.get("highway") in {"bus_stop", "platform", "rest_area", "services", "elevator"}:
+        if tags.get("highway") in {
+            "bus_stop",
+            "platform",
+            "rest_area",
+            "services",
+            "elevator",
+        }:
             return tags["highway"]
 
         if tags.get("office"):
@@ -307,7 +362,6 @@ class POIFetcher:
         if tags.get("railway"):
             return f"railway_{tags['railway']}"
 
-        # Building fallback (only specific types)
         if tags.get("building") and tags["building"] != "yes":
             return f"building_{tags['building']}"
 

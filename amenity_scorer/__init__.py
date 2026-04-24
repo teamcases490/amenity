@@ -9,9 +9,9 @@ Public API:
     CategoryScorer   — per-category 6-component scoring
 """
 
-from .main import AmenityPipeline
 from .amenity_calculator import AmenityCalculator
 from .category_scorer import CategoryScorer
+from .main import AmenityPipeline
 
 __version__ = "2.0.0"
 __all__ = ["AmenityPipeline", "AmenityCalculator", "CategoryScorer"]
