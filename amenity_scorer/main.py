@@ -158,6 +158,9 @@ class AmenityPipeline:
         jsonl_path = Path(output_stem + ".jsonl")
         json_path = Path(output_stem + ".json")
 
+        # Automatically create the results directory if it doesn't exist
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+
         # Load input — use vectorised access, not iterrows (much faster for large CSVs)
         df = pd.read_csv(input_file)
         lat_col = next((c for c in df.columns if "lat" in c.lower()), None)

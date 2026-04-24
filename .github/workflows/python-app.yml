@@ -22,6 +22,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r amenity_scorer/requirements.txt
         
-    - name: Run Test Suite
+    - name: Run Formula and Unit Tests
+      run: |
+        python comprehensive_test.py
+
+    - name: Run Integration Test Suite
       run: |
         python test_suite.py
