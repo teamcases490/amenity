@@ -34,11 +34,16 @@ class POIFetcher:
         pois = fetcher.fetch(lat=19.076, lon=72.877, max_radius_km=2.0)
     """
 
-    OVERPASS_ENDPOINTS = [
-        "https://overpass-api.de/api/interpreter",
-        "https://lz4.overpass-api.de/api/interpreter",
-        "https://z.overpass-api.de/api/interpreter",
-    ]
+    @property
+    def OVERPASS_ENDPOINTS(self) -> List[str]:
+        """Dynamic endpoint list. Use rotation for public API, single endpoint for local."""
+        if "localhost" in config.OSM_OVERPASS_URL or "127.0.0.1" in config.OSM_OVERPASS_URL:
+            return [config.OSM_OVERPASS_URL]
+        return [
+            "https://overpass-api.de/api/interpreter",
+            "https://lz4.overpass-api.de/api/interpreter",
+            "https://z.overpass-api.de/api/interpreter",
+        ]
 
     def __init__(self, logger_instance: Optional[logging.Logger] = None):
         self.logger = logger_instance or logger

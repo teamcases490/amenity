@@ -4,6 +4,12 @@ Calculates an India-calibrated amenity index (0–100) for any location using Op
 
 ---
 
+### 🐳 High-Performance Mode (Recommended)
+For large-scale batch processing, we recommend setting up a local Overpass API instance.
+See **[DOCKER_SETUP.md](./DOCKER_SETUP.md)** for instructions.
+
+---
+
 ## Setup (Windows)
 
 **Requirement:** Python 3.9+
