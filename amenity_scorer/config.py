@@ -6,12 +6,13 @@ Includes amenity, office, railway, building, shop, and leisure tags.
 """
 
 import pathlib as _pl
+# import os as _os # Removed for local-only focus
 
 VERSION = "2.1"
 
 # API Configuration
-# OSM_OVERPASS_URL = "https://overpass-api.de/api/interpreter"  # Public API (slow, rate-limited)
-OSM_OVERPASS_URL = "http://localhost:12345/api/interpreter"     # Local Docker API (blazing fast, no limits)
+# OSM_OVERPASS_URL = "https://overpass-api.de/api/interpreter"  # Public API
+OSM_OVERPASS_URL = "http://127.0.0.1:12345/api/interpreter"     # Local Docker API
 API_TIMEOUT = 90
 API_MAX_RETRIES = 9
 REQUESTS_PER_SECOND = 0         # No limit needed for local Docker API!
